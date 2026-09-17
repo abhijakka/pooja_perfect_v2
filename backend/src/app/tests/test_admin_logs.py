@@ -1,22 +1,39 @@
-"""Admin activity log GraphQL tests."""
+"""Activity log tests — global file-based pipeline (PonyTail Ultra).
+
+Covers:
+- daily file naming (``pooja_DD_MM_YYYY.log``)
+- SUCCESS / WARNING / ERROR classification and meaningful descriptions
+- GraphQL error inspection
+- sensitive-data sanitization
+- the admin GraphQL API and file-backed CRUD mutations
+"""
 
 from __future__ import annotations
 
-import uuid
+import re
 
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
-from app.models.activity_log import ActivityLog
-from app.models.enums import AuditLevel, UserRole
-from app.models.user import User
+from app.core.activity_logging import (
+    ERROR,
+    SUCCESS,
+    WARNING,
+    build_description,
+    classify_graphql_errors,
+    classify_response,
+    create_activity_log,
+    daily_log_path,
+    get_activity_log,
+    read_entries,
+)
+from app.main import app
 from app.tests.admin_test_utils import admin_headers, gql
-from app.tests.conftest import TestingSessionLocal
+from app.tests.conftest import ACTIVITY_LOG_DIR
 
 LIST_QUERY = """
 query {
-  activityLogs(page: 1, pageSize: 20) {
-    items { id action level }
+  activityLogs(page: 1, pageSize: 50) {
+    items { id action level details status method path user source statusCode ipAddress }
     pagination { total }
   }
 }
@@ -25,7 +42,7 @@ query {
 CREATE_MUTATION = """
 mutation CreateLog($data: ActivityLogInput!) {
   createActivityLog(data: $data) {
-    id action level resource details status
+    id action level details status
   }
 }
 """
@@ -52,77 +69,210 @@ mutation {
 
 GET_QUERY = """
 query GetLog($id: UUID!) {
-  activityLog(id: $id) { id action level }
+  activityLog(id: $id) { id action level details }
 }
 """
 
 
-def _seed_admin(session: Session) -> User:
-    admin = User(
-        first_name="Admin",
-        last_name="One",
-        email="admin1@example.com",
-        password_hash="x",
-        role_name=UserRole.ADMIN,
+# ── Unit tests: classification ───────────────────────────────────────────────
+def test_classify_response_status_mapping() -> None:
+    for status in (200, 201, 202, 204):
+        assert classify_response(status) == SUCCESS
+    for status in (400, 401, 403, 404, 409, 422, 429):
+        assert classify_response(status) == WARNING
+    for status in (500, 502, 503, 504):
+        assert classify_response(status) == ERROR
+
+
+def test_classify_graphql_errors() -> None:
+    assert classify_graphql_errors([{"extensions": {"code": 401}}]) == WARNING
+    assert classify_graphql_errors([{"extensions": {"code": 404}}]) == WARNING
+    assert classify_graphql_errors([{"extensions": {"code": 409}}]) == WARNING
+    assert classify_graphql_errors([{"extensions": {"code": 500}}]) == ERROR
+    assert classify_graphql_errors([{"message": "boom"}]) == "error"
+
+
+# ── Unit tests: meaningful descriptions ──────────────────────────────────────
+def test_success_description_is_meaningful() -> None:
+    action, source, resource, _, description = build_description(
+        method="POST",
+        path="/admin/graphql",
+        level=SUCCESS,
+        status=200,
+        user="admin",
+        graphql_operation="createProduct",
     )
-    session.add(admin)
-    session.flush()
-    return admin
+    assert description == "SUCCESS - Admin created product successfully via createProduct"
+    assert action == "Product created"
+    assert resource == "product"
+    assert source == "Catalog"
 
 
-def test_list_activity_logs(client: TestClient) -> None:
-    session: Session = TestingSessionLocal()
-    try:
-        admin = _seed_admin(session)
-        log = ActivityLog(
-            actor_id=admin.id,
-            action="product.create",
-            level=AuditLevel.INFO,
-            resource="product",
-        )
-        session.add(log)
-        session.commit()
-    finally:
-        session.close()
+def test_warning_description_explains_reason() -> None:
+    _, _, _, _, login_warn = build_description(
+        method="POST", path="/auth/login", level=WARNING, status=401, user="customer"
+    )
+    assert login_warn == "WARNING - Login failed because credentials were invalid"
 
+    _, _, _, _, not_found = build_description(
+        method="GET", path="/api/admin/orders/999", level=WARNING, status=404, user="admin"
+    )
+    assert not_found.startswith("WARNING")
+    assert "not found" in not_found.lower()
+
+    _, _, _, _, unauthorized = build_description(
+        method="GET", path="/api/admin/logs", level=WARNING, status=403, user="customer"
+    )
+    assert unauthorized == "WARNING - Unauthorized access attempt to /api/admin/logs"
+
+
+def test_error_description_explains_failure() -> None:
+    _, _, _, _, database_error = build_description(
+        method="POST", path="/api/orders", level=ERROR, status=500, user="customer"
+    )
+    assert database_error == (
+        "ERROR - Internal server error while processing POST /api/orders (HTTP 500)"
+    )
+
+    _, _, _, _, graphql_error = build_description(
+        method="POST",
+        path="/admin/graphql",
+        level=ERROR,
+        status=200,
+        user="admin",
+        graphql_operation="createProduct",
+        graphql_errors=[{"extensions": {"code": 500}}],
+    )
+    assert "ERROR" in graphql_error
+    assert "internal server error" in graphql_error.lower()
+
+
+# ── Middleware integration ───────────────────────────────────────────────────
+def test_daily_log_file_is_named_pooja_dd_mm_yyyy(client: TestClient) -> None:
+    response = client.get("/definitely-not-a-route")
+    assert response.status_code == 404
+    log_path = daily_log_path()
+    assert log_path.exists()
+    assert log_path.parent == ACTIVITY_LOG_DIR
+    assert re.fullmatch(r"pooja_\d{2}_\d{2}_\d{4}\.log", log_path.name)
+
+
+def test_success_request_logged(client: TestClient) -> None:
+    response = client.post("/auth/logout")
+    assert response.status_code == 204
+
+    entries = read_entries()
+    entry = entries[-1]
+    assert entry["level"] == SUCCESS
+    assert entry["method"] == "POST"
+    assert entry["path"] == "/auth/logout"
+    assert entry["status"] == "204"
+    assert entry["user"] == "customer"
+    assert entry["description"] == "SUCCESS - Customer logged out successfully"
+
+
+def test_warning_request_logged(client: TestClient) -> None:
+    response = client.get("/definitely-not-a-route")
+    assert response.status_code == 404
+
+    entry = read_entries()[-1]
+    assert entry["level"] == WARNING
+    assert entry["status"] == "404"
+    assert entry["description"].startswith("WARNING")
+    assert "not found" in entry["description"].lower()
+
+
+async def _boom() -> None:
+    raise RuntimeError("boom")
+
+
+def test_error_request_logged() -> None:
+    if not any(getattr(route, "path", None) == "/__test_error" for route in app.routes):
+        app.add_api_route("/__test_error", _boom, methods=["GET"])
+
+    with TestClient(app, raise_server_exceptions=False) as error_client:
+        response = error_client.get("/__test_error")
+    assert response.status_code == 500
+
+    entry = read_entries()[-1]
+    assert entry["level"] == ERROR
+    assert entry["status"] == "500"
+    assert entry["description"].startswith("ERROR")
+
+
+def test_health_is_not_logged(client: TestClient) -> None:
+    assert client.get("/health").status_code == 200
+    assert read_entries() == []
+
+
+def test_unauthorized_admin_request_logged_as_warning(client: TestClient) -> None:
+    response = client.post("/admin/graphql", json={"query": "{ activityLogs { pagination { total } } }"})
+    assert response.status_code == 401
+
+    entry = read_entries()[-1]
+    assert entry["level"] == WARNING
+    assert entry["user"] == "admin"
+    assert entry["status"] == "401"
+
+
+def test_graphql_business_error_is_warning(client: TestClient) -> None:
+    # Missing required variable -> GraphQL validation error with an HTTP 200 body.
+    response = client.post("/graphql", json={"query": "query { nonsense }"})
+    assert response.status_code == 200
+
+    entry = read_entries()[-1]
+    assert entry["level"] in (WARNING, ERROR)
+    assert entry["path"] == "/graphql"
+
+
+# ── Admin API over the daily files ───────────────────────────────────────────
+def test_admin_activity_logs_api_returns_enhanced_fields(client: TestClient) -> None:
+    client.get("/definitely-not-a-route")
     result = gql(client, LIST_QUERY, headers=admin_headers())
     assert "errors" not in result, result
-    assert result["data"]["activityLogs"]["pagination"]["total"] == 1
+
+    items = result["data"]["activityLogs"]["items"]
+    assert items
+    match = next(item for item in items if item["path"] == "/definitely-not-a-route")
+    assert match["level"] == WARNING
+    assert match["status"] == "Warning"
+    assert match["statusCode"] == 404
+    assert match["method"] == "GET"
+    assert match["user"] == "guest"
+    assert match["source"] == "API"
+    assert match["details"].startswith("WARNING")
 
 
-def test_get_activity_log(client: TestClient) -> None:
-    session: Session = TestingSessionLocal()
-    try:
-        admin = _seed_admin(session)
-        log = ActivityLog(
-            actor_id=admin.id,
-            action="order.update",
-            level=AuditLevel.WARNING,
-            resource="order",
-        )
-        session.add(log)
-        session.commit()
-        log_id = str(log.id)
-    finally:
-        session.close()
-
+def test_admin_activity_logs_search_filter(client: TestClient) -> None:
+    client.get("/definitely-not-a-route")
     result = gql(
-        client, GET_QUERY, {"id": log_id}, headers=admin_headers()
+        client,
+        """
+        query {
+          activityLogs(page: 1, pageSize: 50, level: "warning", search: "definitely") {
+            items { path level }
+            pagination { total }
+          }
+        }
+        """,
+        headers=admin_headers(),
     )
     assert "errors" not in result, result
-    assert result["data"]["activityLog"]["action"] == "order.update"
+    items = result["data"]["activityLogs"]["items"]
+    assert items
+    assert all(item["level"] == WARNING for item in items)
 
 
-def test_create_activity_log(client: TestClient) -> None:
+def test_create_get_delete_activity_log_mutations(client: TestClient) -> None:
     result = gql(
         client,
         CREATE_MUTATION,
         {
             "data": {
-                "action": "settings.update",
+                "action": "Manual review",
                 "level": "info",
                 "resource": "settings",
-                "details": "Notification preferences updated",
+                "details": "Notification preferences reviewed",
                 "status": "Success",
             }
         },
@@ -130,100 +280,36 @@ def test_create_activity_log(client: TestClient) -> None:
     )
     assert "errors" not in result, result
     created = result["data"]["createActivityLog"]
-    assert created["action"] == "settings.update"
+    assert created["action"] == "Manual review"
     assert created["level"] == "info"
-    assert created["status"] == "Success"
+    assert created["details"] == "SUCCESS - Notification preferences reviewed"
+
+    fetched = gql(client, GET_QUERY, {"id": created["id"]}, headers=admin_headers())
+    assert "errors" not in fetched, fetched
+    assert fetched["data"]["activityLog"]["action"] == "Manual review"
+
+    deleted = gql(client, DELETE_MUTATION, {"id": created["id"]}, headers=admin_headers())
+    assert "errors" not in deleted, deleted
+    assert deleted["data"]["deleteActivityLog"]["success"] is True
+    assert get_activity_log(created["id"]) is None
 
 
-def test_update_activity_log(client: TestClient) -> None:
-    session: Session = TestingSessionLocal()
-    try:
-        admin = _seed_admin(session)
-        log = ActivityLog(
-            actor_id=admin.id,
-            action="product.create",
-            level=AuditLevel.INFO,
-            resource="product",
-            status="Success",
-        )
-        session.add(log)
-        session.commit()
-        log_id = str(log.id)
-    finally:
-        session.close()
-
-    result = gql(
-        client,
-        UPDATE_MUTATION,
-        {"id": log_id, "data": {"status": "Warning", "level": "warning"}},
-        headers=admin_headers(),
-    )
-    assert "errors" not in result, result
-    updated = result["data"]["updateActivityLog"]
-    assert updated["status"] == "Warning"
-    assert updated["level"] == "warning"
-
-
-def test_delete_activity_log(client: TestClient) -> None:
-    session: Session = TestingSessionLocal()
-    try:
-        admin = _seed_admin(session)
-        log = ActivityLog(
-            actor_id=admin.id,
-            action="product.delete",
-            level=AuditLevel.ERROR,
-            resource="product",
-        )
-        session.add(log)
-        session.commit()
-        log_id = str(log.id)
-    finally:
-        session.close()
-
-    result = gql(
-        client, DELETE_MUTATION, {"id": log_id}, headers=admin_headers()
-    )
-    assert "errors" not in result, result
-    assert result["data"]["deleteActivityLog"]["success"] is True
-
-    session = TestingSessionLocal()
-    try:
-        assert session.get(ActivityLog, uuid.UUID(log_id)) is None
-    finally:
-        session.close()
-
-
-def test_clear_activity_logs(client: TestClient) -> None:
-    session: Session = TestingSessionLocal()
-    try:
-        admin = _seed_admin(session)
-        session.add_all(
-            [
-                ActivityLog(
-                    actor_id=admin.id,
-                    action="product.create",
-                    level=AuditLevel.INFO,
-                    resource="product",
-                ),
-                ActivityLog(
-                    actor_id=admin.id,
-                    action="order.update",
-                    level=AuditLevel.WARNING,
-                    resource="order",
-                ),
-            ]
-        )
-        session.commit()
-    finally:
-        session.close()
+def test_clear_activity_logs_mutation(client: TestClient) -> None:
+    client.get("/definitely-not-a-route")
+    assert any(entry["path"] == "/definitely-not-a-route" for entry in read_entries())
 
     result = gql(client, CLEAR_MUTATION, headers=admin_headers())
     assert "errors" not in result, result
     assert result["data"]["clearActivityLogs"]["success"] is True
+    assert all(entry["path"] != "/definitely-not-a-route" for entry in read_entries())
 
-    session = TestingSessionLocal()
-    try:
-        total = session.query(ActivityLog).count()
-        assert total == 0
-    finally:
-        session.close()
+
+# ── Sensitive-data sanitization ──────────────────────────────────────────────
+def test_newlines_are_sanitized() -> None:
+    entry = create_activity_log(
+        action="Manual", details="first line\nsecond line", level=SUCCESS
+    )
+    loaded = get_activity_log(entry["id"])
+    assert loaded is not None
+    assert "\n" not in loaded["description"]
+    assert loaded["description"] == "SUCCESS - first line second line"

@@ -16,7 +16,7 @@ query {
   ipActivity(page: 1, pageSize: 20) {
     items {
       id ipAddress action
-      browser browserVersion os device deviceType path screen isMobile
+      browser browserVersion os device deviceType path screen isMobile visitCount
     }
     pagination { total }
   }
@@ -36,6 +36,34 @@ mutation($ipAddress: String!, $status: String!) {
   createIpPolicy(ipAddress: $ipAddress, status: $status) {
     id ipAddress status
   }
+}
+"""
+
+CREATE_ACTIVITY_MUTATION = """
+mutation(
+  $ipAddress: String!, $path: String!, $visitCount: Int,
+  $browser: String, $os: String, $device: String, $deviceType: String
+) {
+  createIpActivity(
+    ipAddress: $ipAddress, path: $path, visitCount: $visitCount,
+    browser: $browser, os: $os, device: $device, deviceType: $deviceType
+  ) {
+    id ipAddress path browser os device deviceType visitCount
+  }
+}
+"""
+
+UPDATE_ACTIVITY_MUTATION = """
+mutation($id: UUID!, $path: String, $visitCount: Int, $browser: String) {
+  updateIpActivity(id: $id, path: $path, visitCount: $visitCount, browser: $browser) {
+    id path browser visitCount
+  }
+}
+"""
+
+DELETE_ACTIVITY_MUTATION = """
+mutation($id: UUID!) {
+  deleteIpActivity(id: $id) { success message }
 }
 """
 
@@ -85,6 +113,64 @@ def test_list_ip_activity(client: TestClient) -> None:
     assert item["path"] == "/login"
     assert item["screen"] == "1920x1080"
     assert item["isMobile"] is False
+    assert item["visitCount"] == 1
+
+
+def test_create_update_delete_ip_activity(client: TestClient) -> None:
+    created = gql(
+        client,
+        CREATE_ACTIVITY_MUTATION,
+        variables={
+            "ipAddress": "203.0.113.77",
+            "path": "/shop",
+            "visitCount": 3,
+            "browser": "Firefox",
+            "os": "Linux",
+            "device": "Linux PC",
+            "deviceType": "desktop",
+        },
+        headers=admin_headers(),
+    )
+    assert "errors" not in created, created
+    data = created["data"]["createIpActivity"]
+    assert data["ipAddress"] == "203.0.113.77"
+    assert data["path"] == "/shop"
+    assert data["browser"] == "Firefox"
+    assert data["os"] == "Linux"
+    assert data["device"] == "Linux PC"
+    assert data["deviceType"] == "desktop"
+    assert data["visitCount"] == 3
+
+    updated = gql(
+        client,
+        UPDATE_ACTIVITY_MUTATION,
+        variables={
+            "id": data["id"],
+            "path": "/checkout",
+            "visitCount": 7,
+            "browser": "Edge",
+        },
+        headers=admin_headers(),
+    )
+    assert "errors" not in updated, updated
+    updated_data = updated["data"]["updateIpActivity"]
+    assert updated_data["path"] == "/checkout"
+    assert updated_data["browser"] == "Edge"
+    assert updated_data["visitCount"] == 7
+
+    deleted = gql(
+        client,
+        DELETE_ACTIVITY_MUTATION,
+        variables={"id": data["id"]},
+        headers=admin_headers(),
+    )
+    assert "errors" not in deleted, deleted
+    assert deleted["data"]["deleteIpActivity"]["success"] is True
+
+    listing = gql(client, ACTIVITY_QUERY, headers=admin_headers())
+    assert "errors" not in listing, listing
+    ids = [item["id"] for item in listing["data"]["ipActivity"]["items"]]
+    assert data["id"] not in ids
 
 
 def test_create_ip_policy(client: TestClient) -> None:

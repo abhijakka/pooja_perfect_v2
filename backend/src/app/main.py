@@ -10,6 +10,7 @@ from app.api.tracking import router as tracking_router
 from app.api.webhooks.payment import router as payment_webhook_router
 from app.core.exceptions import AppError
 from app.db import check_db_health
+from app.middleware.activity_log import ActivityLogMiddleware
 from app.middleware.ip_tracking import IPActivityMiddleware
 from app.public.api.graphql.schema import public_schema
 from app.public.context import get_public_context
@@ -27,6 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(IPActivityMiddleware)
+app.add_middleware(ActivityLogMiddleware)
 app.include_router(auth_router)
 app.include_router(tracking_router)
 app.include_router(payment_webhook_router)

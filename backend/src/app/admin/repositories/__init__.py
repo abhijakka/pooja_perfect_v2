@@ -6,7 +6,6 @@ They must NOT contain authorization, business rules, payment logic, GraphQL logi
 or HTTP logic.
 """
 
-from .activity_log_repository import ActivityLogRepository
 from .analytics_repository import AnalyticsRepository
 from .category_repository import AdminCategoryRepository
 from .chat_repository import AdminChatRepository
@@ -25,7 +24,6 @@ from .subscription_repository import AdminSubscriptionRepository
 from .wishlist_repository import AdminWishlistRepository
 
 __all__ = [
-    "ActivityLogRepository",
     "AdminCategoryRepository",
     "AdminChatRepository",
     "AdminCouponRepository",

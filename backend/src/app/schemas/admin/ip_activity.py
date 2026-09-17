@@ -12,6 +12,8 @@ class IPActivityResponse(TimestampResponse):
     action: str
     user_agent: str | None = None
     metadata_json: dict[str, Any]
+    path: str | None = None
+    visit_count: int = 1
 
 
 class IPPolicyResponse(TimestampResponse):

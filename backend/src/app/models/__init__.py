@@ -1,4 +1,3 @@
-from .activity_log import ActivityLog
 from .address import Address
 from .admin_action import AdminAction
 from .base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -66,7 +65,6 @@ from .wishlist_item import WishlistItem
 
 __all__ = [
     "OTP",
-    "ActivityLog",
     "Address",
     "AdminAction",
     "AuditLevel",

@@ -1,6 +1,7 @@
 """Application settings loaded from environment / .env file."""
 
 import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -39,6 +40,12 @@ class Settings(BaseSettings):
 
     # ── Payments ─────────────────────────────────────────────
     payment_webhook_secret: str = "change-me-webhook-secret"
+
+    # ── Activity logging ──────────────────────────────────────
+    # Directory for the daily activity log files. Defaults to the repository
+    # <repo>/logs folder so files are easy to find; override with ACTIVITY_LOG_DIR.
+    activity_log_dir: Path = Path(__file__).resolve().parent.parent.parent.parent / "logs"
+    activity_log_enabled: bool = True
 
 
 settings = Settings()

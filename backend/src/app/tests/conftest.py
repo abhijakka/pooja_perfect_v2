@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from collections.abc import Generator
+from pathlib import Path
 
 os.environ.setdefault("APP_ENV", "test")
 
@@ -13,9 +15,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import settings
 from app.db import get_db
 from app.main import app
 from app.models import Base
+
+# Redirect activity logs to an isolated temp directory so tests never touch the
+# repository's real logs/ folder.
+ACTIVITY_LOG_DIR = Path(tempfile.mkdtemp(prefix="pooja-test-logs-"))
+settings.activity_log_dir = ACTIVITY_LOG_DIR
 
 engine = create_engine(
     "sqlite://",
@@ -38,6 +46,8 @@ def override_get_db() -> Generator[Session, None, None]:
 @pytest.fixture(autouse=True)
 def _setup_db() -> Generator[None, None, None]:
     Base.metadata.create_all(bind=engine)
+    for log_file in ACTIVITY_LOG_DIR.glob("*.log"):
+        log_file.unlink(missing_ok=True)
     yield
     Base.metadata.drop_all(bind=engine)
 

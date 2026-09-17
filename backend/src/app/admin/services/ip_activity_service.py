@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.admin.repositories.ip_activity_repository import IPActivityRepository
 from app.core.exceptions import DuplicateResourceError, NotFoundError
@@ -28,6 +28,85 @@ class IPActivityService:
         pagination: PaginationInput | None = None,
     ) -> tuple[list[IPActivity], int]:
         return self._repo.list_activity(ip_address, pagination)
+
+    def get_activity(self, activity_id: uuid.UUID | str) -> IPActivity:
+        activity = self._repo.get_activity(activity_id)
+        if activity is None:
+            raise NotFoundError("IP visit record not found")
+        return activity
+
+    def create_activity(
+        self,
+        *,
+        ip_address: str,
+        path: str = "/",
+        action: str = "page_view",
+        visit_count: int = 1,
+        browser: str | None = None,
+        os: str | None = None,
+        device: str | None = None,
+        device_type: str | None = None,
+        user_id: uuid.UUID | None = None,
+    ) -> IPActivity:
+        metadata: dict[str, Any] = {
+            "path": path,
+            "browser": browser,
+            "os": os,
+            "device": device,
+            "device_type": device_type,
+        }
+        metadata = {key: value for key, value in metadata.items() if value is not None}
+        activity = self._repo.create_activity(
+            ip_address=ip_address,
+            action=action,
+            path=path,
+            visit_count=max(1, visit_count),
+            metadata_json=metadata,
+            user_id=user_id,
+        )
+        self._db.commit()
+        self._db.refresh(activity)
+        return activity
+
+    def update_activity(
+        self,
+        activity_id: uuid.UUID | str,
+        *,
+        path: str | None = None,
+        action: str | None = None,
+        visit_count: int | None = None,
+        browser: str | None = None,
+        os: str | None = None,
+        device: str | None = None,
+        device_type: str | None = None,
+    ) -> IPActivity:
+        activity = self.get_activity(activity_id)
+        metadata = dict(activity.metadata_json or {})
+        if browser is not None:
+            metadata["browser"] = browser
+        if os is not None:
+            metadata["os"] = os
+        if device is not None:
+            metadata["device"] = device
+        if device_type is not None:
+            metadata["device_type"] = device_type
+        if path is not None:
+            metadata["path"] = path
+        self._repo.update_activity(
+            activity,
+            action=action,
+            path=path,
+            visit_count=max(1, visit_count) if visit_count is not None else None,
+            metadata_json=metadata,
+        )
+        self._db.commit()
+        self._db.refresh(activity)
+        return activity
+
+    def delete_activity(self, activity_id: uuid.UUID | str) -> None:
+        activity = self.get_activity(activity_id)
+        self._repo.delete_activity(activity)
+        self._db.commit()
 
     def list_policies(self) -> list[IPPolicy]:
         return self._repo.list_policies()

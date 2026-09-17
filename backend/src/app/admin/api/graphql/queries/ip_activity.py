@@ -30,10 +30,11 @@ def _to_ip_activity_type(a: Any) -> IPActivityType:
         os_version=meta.get("os_version"),
         device=meta.get("device"),
         device_type=meta.get("device_type"),
-        path=meta.get("path"),
+        path=a.path or meta.get("path"),
         screen=meta.get("screen"),
         referrer=meta.get("referrer"),
         is_mobile=meta.get("is_mobile"),
+        visit_count=a.visit_count if a.visit_count is not None else 1,
     )
 
 

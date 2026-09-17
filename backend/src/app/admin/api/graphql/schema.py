@@ -21,13 +21,17 @@ from app.admin.api.graphql.mutations import (
     mutate_create_activity_log,
     mutate_create_category,
     mutate_create_coupon,
+    mutate_create_customer,
     mutate_create_hero,
+    mutate_create_ip_activity,
     mutate_create_ip_policy,
     mutate_create_product,
     mutate_delete_activity_log,
     mutate_delete_category,
     mutate_delete_coupon,
+    mutate_delete_customer,
     mutate_delete_hero,
+    mutate_delete_ip_activity,
     mutate_delete_ip_policy,
     mutate_delete_product,
     mutate_delete_review,
@@ -42,17 +46,16 @@ from app.admin.api.graphql.mutations import (
     mutate_set_category_active,
     mutate_set_category_featured,
     mutate_set_coupon_active,
-    mutate_create_customer,
-    mutate_delete_customer,
     mutate_set_customer_status,
     mutate_set_hero_active,
-    mutate_update_customer,
     mutate_set_product_featured,
     mutate_update_activity_log,
     mutate_update_category,
     mutate_update_coupon,
+    mutate_update_customer,
     mutate_update_customer_notes,
     mutate_update_hero,
+    mutate_update_ip_activity,
     mutate_update_ip_policy,
     mutate_update_order_status,
     mutate_update_product,
@@ -266,6 +269,15 @@ class AdminMutation:
     )
 
     # ── security ─────────────────────────────────────────────
+    create_ip_activity: IPActivityType = strawberry.field(
+        resolver=mutate_create_ip_activity
+    )
+    update_ip_activity: IPActivityType = strawberry.field(
+        resolver=mutate_update_ip_activity
+    )
+    delete_ip_activity: MutationResult = strawberry.field(
+        resolver=mutate_delete_ip_activity
+    )
     create_ip_policy: IPPolicyType = strawberry.field(resolver=mutate_create_ip_policy)
     update_ip_policy: IPPolicyType = strawberry.field(resolver=mutate_update_ip_policy)
     delete_ip_policy: MutationResult = strawberry.field(

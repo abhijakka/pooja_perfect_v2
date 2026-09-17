@@ -29,6 +29,8 @@ class IPActivityType:
     screen: str | None = None
     referrer: str | None = None
     is_mobile: bool | None = None
+    # Structured visit counters on the existing table.
+    visit_count: int = 1
 
 
 @strawberry.type

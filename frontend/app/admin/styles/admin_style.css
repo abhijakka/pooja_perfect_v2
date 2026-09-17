@@ -2334,6 +2334,7 @@ a {
 .ip-exact-status.active { background: #edf8f1; color: var(--admin-green); }
 .ip-exact-status.blocked { background: #fff0f2; color: var(--admin-red); }
 .ip-exact-status.whitelisted { background: #eef4fb; color: var(--admin-blue); }
+.ip-exact-status.open { background: #f3f4f6; color: var(--admin-muted); }
 .ip-exact-row-actions { display: flex; align-items: center; gap: 4px; }
 .ip-exact-row-actions button { width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid var(--admin-border); border-radius: 7px; background: #fff; color: var(--admin-muted); }
 .ip-exact-row-actions button:hover { background: var(--admin-blush-light); color: var(--admin-rose); }

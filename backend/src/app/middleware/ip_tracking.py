@@ -54,12 +54,9 @@ def _client_ip(request: Request) -> str:
 
 
 def _action_for_path(path: str) -> str:
-    if path.startswith("/admin"):
-        return "admin_access"
-    if path.startswith("/graphql"):
-        return "api_call"
-    if path.startswith("/auth"):
-        return "auth"
+    # Every HTML page navigation is a page_view so server-side capture and the
+    # frontend beacon share the same (ip, action, path) dedupe key. GraphQL /
+    # API requests are already excluded by _should_track().
     return "page_view"
 
 

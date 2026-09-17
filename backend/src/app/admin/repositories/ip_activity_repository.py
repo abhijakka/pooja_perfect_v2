@@ -42,6 +42,59 @@ class IPActivityRepository:
         )
         return list(self._db.scalars(stmt).all()), total
 
+    def get_activity(self, activity_id: uuid.UUID | str) -> IPActivity | None:
+        if not isinstance(activity_id, uuid.UUID):
+            activity_id = uuid.UUID(str(activity_id))
+        return self._db.get(IPActivity, activity_id)
+
+    def create_activity(
+        self,
+        *,
+        ip_address: str,
+        action: str,
+        path: str | None = None,
+        visit_count: int = 1,
+        user_agent: str | None = None,
+        metadata_json: dict | None = None,
+        user_id: uuid.UUID | None = None,
+    ) -> IPActivity:
+        activity = IPActivity(
+            user_id=user_id,
+            ip_address=ip_address,
+            action=action,
+            user_agent=user_agent,
+            metadata_json=metadata_json or {},
+            path=path,
+            visit_count=visit_count,
+        )
+        self._db.add(activity)
+        return activity
+
+    def update_activity(
+        self,
+        activity: IPActivity,
+        *,
+        action: str | None = None,
+        path: str | None = None,
+        visit_count: int | None = None,
+        user_agent: str | None = None,
+        metadata_json: dict | None = None,
+    ) -> IPActivity:
+        if action is not None:
+            activity.action = action
+        if path is not None:
+            activity.path = path
+        if visit_count is not None:
+            activity.visit_count = visit_count
+        if user_agent is not None:
+            activity.user_agent = user_agent
+        if metadata_json is not None:
+            activity.metadata_json = metadata_json
+        return activity
+
+    def delete_activity(self, activity: IPActivity) -> None:
+        self._db.delete(activity)
+
     # ── policies ─────────────────────────────────────────────
 
     def list_policies(self) -> list[IPPolicy]:

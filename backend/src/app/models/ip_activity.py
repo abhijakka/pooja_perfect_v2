@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, String
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -14,6 +14,7 @@ class IPActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "ip_activity"
     __table_args__ = (
         Index("ix_ip_activity_ip_created_at", "ip_address", "created_at"),
+        Index("ix_ip_activity_ip_path_created_at", "ip_address", "path", "created_at"),
     )
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
@@ -22,6 +23,10 @@ class IPActivity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     user_agent: Mapped[str | None] = mapped_column(String(1024))
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSON, default=dict, nullable=False
+    )
+    path: Mapped[str | None] = mapped_column(String(500), index=True)
+    visit_count: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
     )
 
 
