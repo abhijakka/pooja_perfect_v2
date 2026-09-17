@@ -1,0 +1,1 @@
+/ponytail ultra  #attachment:Pasted text #1  this is login page create page convert html to tsx and  use global.css file and use header footer component already there and remaning in html inside container create evrything  create if additional feature is there add css  ,except header footer and use excat alignments ,text sizes take from cart page 

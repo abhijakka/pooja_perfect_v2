@@ -1,0 +1,2 @@
+import { PageStub } from "../../../page-stub";
+export default async function OrderPage({ params }: { params: Promise<{ orderId: string }> }) { const { orderId } = await params; return <PageStub title={`Order ${orderId}`} description="Order details and delivery status will appear here." />; }

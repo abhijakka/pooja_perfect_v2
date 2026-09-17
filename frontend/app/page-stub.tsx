@@ -1,0 +1,1 @@
+export function PageStub({ title, description }: { title: string; description: string }) { return <main className="shell"><nav><a href="/">PoojaPoint</a><a href="/products">Shop</a><a href="/cart">Cart</a></nav><h1>{title}</h1><p>{description}</p><a className="button" href="/">Back home</a></main>; }
