@@ -1,20 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Provider } from "react-redux";
 import { authApi } from "../services/api/auth.api";
+import { ApiError, setUnauthorizedHandler } from "../services/api/client";
 import { cartApi } from "../services/api/cart.api";
 import { makeStore } from "../store";
-import { useAppDispatch } from "../store/hooks";
-import { logout, setAuthReady, setUser } from "../store/slices/authSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { logout, setAuthReady, setSessionExpired, setTokenExpiry, setUser } from "../store/slices/authSlice";
 import { hydrate as hydrateCart } from "../store/slices/cartSlice";
 import { hydrate as hydrateWishlist } from "../store/slices/wishlistSlice";
 import { setOnline } from "../store/slices/connectionSlice";
 import { SupportChat } from "../components/chat/SupportChat";
 import { useVisitorTracking } from "../hooks/useVisitorTracking";
 
+/** Pages where a missing/invalid access token is expected — never redirect those to home. */
+const AUTH_PAGES = ["/login", "/signup", "/register", "/forgot-password", "/reset-password", "/otp", "/two-factor"];
+
+function isAuthPage(): boolean {
+	return AUTH_PAGES.some((page) => window.location.pathname.startsWith(page));
+}
+
 function AuthBootstrap({ children }: Readonly<{ children: React.ReactNode }>) {
 	const dispatch = useAppDispatch();
+	const router = useRouter();
+	const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+	const accessTokenExpiresAt = useAppSelector((state) => state.auth.accessTokenExpiresAt);
+
+	const endSession = useCallback(() => {
+		dispatch(setSessionExpired());
+		dispatch(logout());
+		if (!isAuthPage()) router.replace("/");
+	}, [dispatch, router]);
+
+	useEffect(() => {
+		setUnauthorizedHandler(endSession);
+		return () => setUnauthorizedHandler(undefined);
+	}, [endSession]);
+
 	useEffect(() => {
 		let isMounted = true;
 		const restoreSession = async () => {
@@ -29,17 +53,33 @@ function AuthBootstrap({ children }: Readonly<{ children: React.ReactNode }>) {
 						role_name: me.role_name,
 					}),
 				);
-			} catch {
-				if (isMounted) dispatch(logout());
+				if (me.expires_at) dispatch(setTokenExpiry(Date.parse(me.expires_at)));
+			} catch (error) {
+				if (!isMounted) return;
+				dispatch(setSessionExpired());
+				dispatch(logout());
+				if (error instanceof ApiError && error.status === 401 && !isAuthPage()) {
+					router.replace("/");
+				}
 			}
 		};
-			restoreSession().finally(() => {
-				if (isMounted) dispatch(setAuthReady());
-			});
+		restoreSession().finally(() => {
+			if (isMounted) dispatch(setAuthReady());
+		});
 		return () => {
 			isMounted = false;
 		};
-	}, [dispatch]);
+	}, [dispatch, router]);
+
+	useEffect(() => {
+		if (!isAuthenticated || accessTokenExpiresAt == null) return;
+		const interval = window.setInterval(() => {
+			if (Date.now() >= accessTokenExpiresAt) {
+				endSession();
+			}
+		}, 1000);
+		return () => window.clearInterval(interval);
+	}, [endSession, isAuthenticated, accessTokenExpiresAt]);
 
 	return children;
 }

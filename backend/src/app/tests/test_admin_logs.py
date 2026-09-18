@@ -225,6 +225,45 @@ def test_graphql_business_error_is_warning(client: TestClient) -> None:
     assert entry["path"] == "/graphql"
 
 
+def test_admin_activity_logs_includes_all_daily_files(client: TestClient) -> None:
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.activity_logging import _rewrite_file, daily_log_path
+
+    yesterday = (datetime.now(tz=UTC) - timedelta(days=1)).date()
+    past_path = daily_log_path(yesterday)
+    _rewrite_file(
+        past_path,
+        [
+            {
+                "id": str(uuid.uuid4()),
+                "date": f"{yesterday:%d-%m-%Y}",
+                "time": "12:00:00",
+                "level": SUCCESS,
+                "ip": "127.0.0.1",
+                "method": "GET",
+                "path": "/yesterday-event",
+                "status": "200",
+                "user": "admin",
+                "action": "Past event",
+                "source": "API",
+                "resource": "page",
+                "description": "SUCCESS - Past event logged",
+            }
+        ],
+    )
+    assert past_path.exists()
+
+    client.get("/definitely-not-a-route")
+    result = gql(client, LIST_QUERY, headers=admin_headers())
+    assert "errors" not in result, result
+
+    paths = {item["path"] for item in result["data"]["activityLogs"]["items"]}
+    assert "/yesterday-event" in paths
+    assert "/definitely-not-a-route" in paths
+
+
 # ── Admin API over the daily files ───────────────────────────────────────────
 def test_admin_activity_logs_api_returns_enhanced_fields(client: TestClient) -> None:
     client.get("/definitely-not-a-route")

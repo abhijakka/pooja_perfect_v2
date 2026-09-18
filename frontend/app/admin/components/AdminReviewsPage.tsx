@@ -75,6 +75,7 @@ export function AdminReviewsPage() {
 	}, [query]);
 
 	const load = useCallback(async (nextPage: number, nextStatus: string, nextQuery: string) => {
+		await Promise.resolve();
 		setLoading(true);
 		try {
 			const { reviews: result } = await adminApi.listReviews({
@@ -95,7 +96,7 @@ export function AdminReviewsPage() {
 	}, []);
 
 	useEffect(() => {
-		load(1, status, debouncedQuery);
+		queueMicrotask(() => load(1, status, debouncedQuery));
 	}, [load, status, debouncedQuery]);
 
 	const filtered = useMemo(() => reviews.filter((review) => rating === "all" || review.rating >= Number(rating)), [rating, reviews]);

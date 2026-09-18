@@ -22,6 +22,37 @@ export class GraphQLError extends Error {
 	}
 }
 
+export type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | undefined;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | undefined): void {
+	unauthorizedHandler = handler;
+}
+
+function notifyUnauthorized(): void {
+	if (unauthorizedHandler) unauthorizedHandler();
+}
+
+/** Public auth endpoints that rightfully return 401 for bad input — not session failures. */
+const PUBLIC_AUTH_PATHS = ["/auth/login", "/auth/register", "/auth/google", "/auth/refresh"];
+
+const AUTH_ERROR_MESSAGES = [
+	"authentication required",
+	"invalid or malformed token",
+	"token has expired",
+	"not authenticated",
+];
+
+function isAuthFailureResponse(status: number, path: string): boolean {
+	return status === 401 && !PUBLIC_AUTH_PATHS.some((candidate) => path.startsWith(candidate));
+}
+
+function isAuthFailureMessage(message: string): boolean {
+	const text = message.toLowerCase();
+	return AUTH_ERROR_MESSAGES.some((candidate) => text.includes(candidate));
+}
+
 export async function apiClient<T>(
 	path: string,
 	init: RequestInit = {},
@@ -54,6 +85,7 @@ export async function apiClient<T>(
 		} catch {
 			// non-JSON error body
 		}
+		if (isAuthFailureResponse(response.status, path)) notifyUnauthorized();
 		throw new ApiError(response.status, detail);
 	}
 
@@ -99,6 +131,7 @@ async function graphqlRequest<T>(
 	});
 
 	if (!response.ok) {
+		if (isAuthFailureResponse(response.status, path)) notifyUnauthorized();
 		throw new ApiError(response.status, `GraphQL request failed with status ${response.status}`);
 	}
 
@@ -106,6 +139,9 @@ async function graphqlRequest<T>(
 		data?: T;
 		errors?: Array<{ message: string }>;
 	};
-	if (body.errors?.length) throw new GraphQLError(body.errors);
+	if (body.errors?.length) {
+		if (body.errors.some((error) => isAuthFailureMessage(error.message))) notifyUnauthorized();
+		throw new GraphQLError(body.errors);
+	}
 	return body.data as T;
 }

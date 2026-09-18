@@ -101,7 +101,7 @@ export default function AccountPage() {
 	};
 	const submitSearch = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!query.trim()) notify("Type a product name"); };
 	const signOut = async () => {
-		try { await authApi.logout(); } finally { dispatch(logout()); router.replace("/login"); }
+		try { await authApi.logout(); } finally { dispatch(logout()); router.replace("/"); }
 	};
 
 	return <>

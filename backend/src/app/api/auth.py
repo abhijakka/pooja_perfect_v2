@@ -6,7 +6,7 @@ reusable by GraphQL resolvers later.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.exceptions import InvalidTokenError
+from app.core.security import decode_token
 from app.db import get_db
 from app.dependencies.auth import get_current_active_user
 from app.models.user import User
 from app.public.services.auth_service import AuthService
 from app.schemas.auth import (
     LoginInput,
+    MeResponse,
     OAuthLoginInput,
     RefreshTokenInput,
     SignupInput,
@@ -56,6 +58,16 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
+
+
+def _extract_access_token(request: Request) -> str | None:
+    token_value = request.cookies.get("access_token")
+    if token_value:
+        return token_value
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    return None
 
 
 @router.post(
@@ -110,11 +122,17 @@ def logout(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=MeResponse)
 def me(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_active_user)],
-) -> User:
-    return current_user
+) -> MeResponse:
+    token_value = _extract_access_token(request)
+    payload = decode_token(token_value, settings.jwt_secret_key, "access")
+    return MeResponse(
+        **UserResponse.model_validate(current_user).model_dump(),
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
+    )
 
 
 @router.post("/google", response_model=TokenResponse)

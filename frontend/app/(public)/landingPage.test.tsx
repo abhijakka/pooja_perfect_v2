@@ -1,11 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import Storefront from "./landingPage";
+import { renderWithProviders } from "../../store/test-utils";
 
 jest.mock("../../services/api/categories.api", () => ({
   categoriesApi: { list: jest.fn().mockResolvedValue({ categories: [] }) },
 }));
 jest.mock("../../services/api/products.api", () => ({
   productsApi: { featured: jest.fn().mockResolvedValue({ products: { items: [] } }) },
+}));
+jest.mock("../../services/api/hero.api", () => ({
+  heroesApi: { list: jest.fn().mockResolvedValue({ heroes: [] }) },
 }));
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
@@ -26,7 +30,7 @@ jest.mock("../../components/product/ProductCard/ProductsSection", () => ({ Produ
 
 describe("Storefront", () => {
   it("renders the storefront sections", () => {
-    render(<Storefront />);
+    renderWithProviders(<Storefront />);
     expect(screen.getByText("Hero")).toBeInTheDocument();
     expect(screen.getByText("Products")).toBeInTheDocument();
     expect(screen.getByText("Subscriptions")).toBeInTheDocument();

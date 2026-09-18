@@ -90,9 +90,11 @@ export default function ProductsPage() {
 
   // Keep the category filter in sync with the URL (?category=...) so clicking a
   // category in the nav bar updates the listing and breadcrumb.
-  useEffect(() => {
+  const [syncedCategoryParam, setSyncedCategoryParam] = useState(categoryParam);
+  if (syncedCategoryParam !== categoryParam) {
+    setSyncedCategoryParam(categoryParam);
     setCategories(categoryParam ? [categoryParam] : []);
-  }, [categoryParam]);
+  }
 
   useEffect(() => {
     const closeOverlays = (event: KeyboardEvent) => {

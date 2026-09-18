@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 import strawberry
@@ -25,8 +26,8 @@ class HeroInput:
     cta_label: str | None = None
     cta_link: str | None = None
     display_order: int = 0
-    starts_at: str | None = None
-    ends_at: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
     seo_title: str | None = None
     seo_description: str | None = None
 
@@ -77,6 +78,8 @@ def mutate_create_hero(self, info: Info, data: HeroInput) -> HeroType:
         cta_label=data.cta_label,
         cta_link=data.cta_link,
         display_order=data.display_order,
+        starts_at=data.starts_at,
+        ends_at=data.ends_at,
         seo_title=data.seo_title,
         seo_description=data.seo_description,
     )
@@ -96,6 +99,8 @@ def mutate_update_hero(
         cta_label=data.cta_label,
         cta_link=data.cta_link,
         display_order=data.display_order,
+        starts_at=data.starts_at,
+        ends_at=data.ends_at,
         seo_title=data.seo_title,
         seo_description=data.seo_description,
     )
@@ -154,3 +159,34 @@ def mutate_remove_hero_image(
     svc = HeroService(ctx.db)
     svc.remove_image(image_id)
     return MutationResult(success=True, message="Hero image removed")
+
+
+def mutate_upload_hero_image(
+    self,
+    info: Info,
+    hero_id: uuid.UUID,
+    base64_data: str,
+    media_type: str = "image",
+    alt_text: str | None = None,
+    display_order: int = 0,
+    is_primary: bool = False,
+    crop_x: int = 50,
+    crop_y: int = 50,
+    crop_zoom: int = 100,
+) -> HeroType:
+    """Upload a base64 image to Cloudinary and attach it to the hero."""
+    ctx: AdminContext = info.context
+    svc = HeroService(ctx.db)
+    return _to_hero_type(
+        svc.upload_image(
+            hero_id,
+            base64_data,
+            media_type=HeroMediaType(media_type),
+            alt_text=alt_text,
+            display_order=display_order,
+            is_primary=is_primary,
+            crop_x=crop_x,
+            crop_y=crop_y,
+            crop_zoom=crop_zoom,
+        )
+    )

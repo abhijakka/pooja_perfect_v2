@@ -1,6 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import AdminIpRoute from "./page";
 
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn() }) }));
+jest.mock("react-redux", () => {
+	const actual = jest.requireActual("react-redux");
+	return { ...actual, useDispatch: Object.assign(() => jest.fn(), { withTypes: () => () => jest.fn() }) };
+});
+
 describe("AdminIpRoute", () => {
 	it("renders the IP Addresses management page with its single visitor tracking table", () => {
 		render(<AdminIpRoute />);

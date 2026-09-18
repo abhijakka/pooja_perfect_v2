@@ -11,6 +11,7 @@ import { useCart } from "../../../hooks/useCart";
 import { useWishlist } from "../../../hooks/useWishlist";
 import { RecommendationsCarousel, type StoreProduct } from "../../../components/product/ProductCard";
 import { products } from "../storefront-data";
+import { couponApi } from "../../../services/api/coupon.api";
 
 export default function CartPage() {
   const { items, count, total, updateQuantity, removeItem, clearCart, addItem } = useCart();
@@ -19,6 +20,7 @@ export default function CartPage() {
   const [coupon, setCoupon] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
   const [toast, setToast] = useState("");
   const [nav, setNav] = useState("shop");
   const [itemToRemove, setItemToRemove] = useState<string | null>(null);
@@ -45,18 +47,30 @@ export default function CartPage() {
     event.preventDefault();
     if (!query.trim()) notify("Type something to search");
   };
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const code = coupon.trim().toUpperCase();
     if (!code) {
       setCouponDiscount(0);
       setCouponMessage("Enter a coupon code.");
-    } else if (code === "POOJA10") {
-      setCouponDiscount(Math.min(100, Math.floor(total * 0.1)));
-      setCouponMessage("✓ Coupon applied — 10% OFF up to ₹100");
-      notify("Coupon applied successfully");
-    } else {
+      return;
+    }
+    setCouponLoading(true);
+    try {
+      const { applyCoupon: result } = await couponApi.apply(code, total);
+      if (result && Number(result.discount) > 0) {
+        const discount = Math.min(Number(result.discount), total);
+        setCouponDiscount(discount);
+        setCouponMessage(`✓ Coupon applied — ${result.code} (${result.couponType === "percentage" ? `${Number(result.value)}% off up to ₹${Number(result.maximumDiscount ?? discount)}` : `₹${Number(result.value)} off`})`);
+        notify("Coupon applied successfully");
+      } else {
+        setCouponDiscount(0);
+        setCouponMessage("Invalid coupon code.");
+      }
+    } catch {
       setCouponDiscount(0);
       setCouponMessage("Invalid coupon code.");
+    } finally {
+      setCouponLoading(false);
     }
   };
   const confirmRemove = (id: string) => {
@@ -141,7 +155,7 @@ export default function CartPage() {
                   </article>
                 );
               })}</div>{!items.length && <div className="empty-cart show"><div className="empty-icon"><Icon name="cart" /></div><h2>Your cart is empty</h2><p>Looks like you haven&apos;t added anything to your cart yet. Explore our beautiful collection of pooja essentials.</p><Link href="/products" className="shop-button">Start Shopping</Link></div>}</section>
-        <aside className="summary"><h2>Order Summary</h2><div className="coupon"><div className="coupon-title"><Icon name="tag" /> Have a coupon?</div><div className="coupon-row"><input value={coupon} onChange={(event) => setCoupon(event.target.value)} placeholder="Enter coupon code" /><button className="coupon-button" onClick={applyCoupon}>Apply</button></div><div className={`coupon-message ${couponMessage.includes("Invalid") || couponMessage.includes("Enter") ? "coupon-error" : ""}`}>{couponMessage}</div></div><div className="summary-rows"><div className="summary-row"><span>Subtotal</span><strong>{money(total)}</strong></div><div className="summary-row discount"><span>Product discount</span><strong>-{money(productDiscount)}</strong></div><div className="summary-row discount"><span>Coupon discount</span><strong>-{money(couponDiscount)}</strong></div><div className="summary-row delivery"><span>Delivery</span><strong>{deliveryFee ? money(deliveryFee) : "FREE"}</strong></div></div><div className="total-row"><span>Total</span><strong>{money(grandTotal)}</strong></div><Link href={items.length ? "/checkout" : "/products"} className="checkout-button" onClick={(event) => { if (!items.length) { event.preventDefault(); notify("Your cart is empty"); } }}>Proceed to Checkout <Icon name="arrow-right" /></Link><div className="secure-note"><Icon name="lock" /> Secure checkout · Your information is protected</div><div className="payment-methods"><span className="payment">UPI</span><span className="payment">VISA</span><span className="payment">RuPay</span><span className="payment">NetBanking</span><span className="payment">COD</span></div><div className="benefits"><div className="benefit"><div className="benefit-icon"><Icon name="truck" /></div><span>Fast delivery</span></div><div className="benefit"><div className="benefit-icon"><Icon name="refresh" /></div><span>Easy returns</span></div><div className="benefit"><div className="benefit-icon"><Icon name="shield" /></div><span>Secure payment</span></div></div></aside>
+        <aside className="summary"><h2>Order Summary</h2><div className="coupon"><div className="coupon-title"><Icon name="tag" /> Have a coupon?</div><div className="coupon-row"><input value={coupon} onChange={(event) => setCoupon(event.target.value)} placeholder="Enter coupon code" /><button className="coupon-button" onClick={applyCoupon} disabled={couponLoading}>{couponLoading ? "..." : "Apply"}</button></div><div className={`coupon-message ${couponMessage.includes("Invalid") || couponMessage.includes("Enter") ? "coupon-error" : ""}`}>{couponMessage}</div></div><div className="summary-rows"><div className="summary-row"><span>Subtotal</span><strong>{money(total)}</strong></div><div className="summary-row discount"><span>Product discount</span><strong>-{money(productDiscount)}</strong></div><div className="summary-row discount"><span>Coupon discount</span><strong>-{money(couponDiscount)}</strong></div><div className="summary-row delivery"><span>Delivery</span><strong>{deliveryFee ? money(deliveryFee) : "FREE"}</strong></div></div><div className="total-row"><span>Total</span><strong>{money(grandTotal)}</strong></div><Link href={items.length ? "/checkout" : "/products"} className="checkout-button" onClick={(event) => { if (!items.length) { event.preventDefault(); notify("Your cart is empty"); } }}>Proceed to Checkout <Icon name="arrow-right" /></Link><div className="secure-note"><Icon name="lock" /> Secure checkout · Your information is protected</div><div className="payment-methods"><span className="payment">UPI</span><span className="payment">VISA</span><span className="payment">RuPay</span><span className="payment">NetBanking</span><span className="payment">COD</span></div><div className="benefits"><div className="benefit"><div className="benefit-icon"><Icon name="truck" /></div><span>Fast delivery</span></div><div className="benefit"><div className="benefit-icon"><Icon name="refresh" /></div><span>Easy returns</span></div><div className="benefit"><div className="benefit-icon"><Icon name="shield" /></div><span>Secure payment</span></div></div></aside>
       </div>
       <RecommendationsCarousel products={recommended} wishlist={wishlist} onWishlistToggle={toggle} onAddToCart={addToCart} />
     </main>

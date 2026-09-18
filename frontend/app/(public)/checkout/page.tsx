@@ -14,6 +14,7 @@ import { useCart } from "../../../hooks/useCart";
 import { useWishlist } from "../../../hooks/useWishlist";
 import { products } from "../storefront-data";
 import { checkoutApi } from "../../../services/api/checkout.api";
+import { couponApi } from "../../../services/api/coupon.api";
 
 type PaymentMethod = "upi" | "card" | "netbanking" | "cod";
 
@@ -36,6 +37,7 @@ export default function CheckoutPage() {
   const [couponInput, setCouponInput] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
   const [orderNote, setOrderNote] = useState("");
   const [terms, setTerms] = useState(false);
   const [toast, setToast] = useState("");
@@ -63,18 +65,30 @@ export default function CheckoutPage() {
     event.preventDefault();
     if (!query.trim()) notify("Type something to search");
   };
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const code = couponInput.trim().toUpperCase();
     if (!code) {
       setCouponDiscount(0);
       setCouponMessage("Enter a coupon code.");
-    } else if (code === "POOJA10") {
-      setCouponDiscount(Math.min(100, Math.floor(total * 0.1)));
-      setCouponMessage("Coupon applied — 10% OFF up to ₹100");
-      notify("Coupon applied successfully");
-    } else {
+      return;
+    }
+    setCouponLoading(true);
+    try {
+      const { applyCoupon: result } = await couponApi.apply(code, total);
+      if (result && Number(result.discount) > 0) {
+        const discount = Math.min(Number(result.discount), total);
+        setCouponDiscount(discount);
+        setCouponMessage(`Coupon applied — ${result.code} (${result.couponType === "percentage" ? `${Number(result.value)}% off up to ₹${Number(result.maximumDiscount ?? discount)}` : `₹${Number(result.value)} off`})`);
+        notify("Coupon applied successfully");
+      } else {
+        setCouponDiscount(0);
+        setCouponMessage("Invalid coupon code.");
+      }
+    } catch {
       setCouponDiscount(0);
       setCouponMessage("Invalid coupon code.");
+    } finally {
+      setCouponLoading(false);
     }
   };
   const readAddress = (values: typeof formik.initialValues) => {
@@ -109,7 +123,7 @@ export default function CheckoutPage() {
           postalCode: values.pin,
           country: "India",
           paymentMethod,
-          couponCode: couponInput.trim() || undefined,
+          couponCode: couponInput.trim().toUpperCase() || undefined,
           notes: orderNote || undefined,
         });
         const order = checkout.order;
@@ -215,7 +229,7 @@ export default function CheckoutPage() {
           </div>
           <div className="co-coupon">
             <input value={couponInput} onChange={(event) => setCouponInput(event.target.value)} placeholder="Coupon code" />
-            <button type="button" onClick={applyCoupon}>Apply</button>
+            <button type="button" onClick={applyCoupon} disabled={couponLoading}>{couponLoading ? "..." : "Apply"}</button>
           </div>
           {couponMessage && <div className={`co-coupon-message ${couponMessage.includes("Invalid") || couponMessage.includes("Enter") ? "error" : ""}`}>{couponMessage}</div>}
           <div className="price-lines">

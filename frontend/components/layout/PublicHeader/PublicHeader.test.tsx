@@ -1,12 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { PublicHeader } from "./PublicHeader";
+import { renderWithProviders } from "../../../store/test-utils";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("../../../hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 
 describe("PublicHeader", () => {
   it("renders header with search and actions", () => {
-    render(
+    renderWithProviders(
       <PublicHeader
         query=""
         suggestions={[]}

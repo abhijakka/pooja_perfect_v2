@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.enums import HeroMediaType
 from app.models.hero import Hero
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 
 class AdminHeroRepository:
     """Data access for admin hero/banner management."""
+
+    MAX_HEROES = 4
 
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -32,6 +34,28 @@ class AdminHeroRepository:
             stmt = stmt.where(Hero.is_active.is_(True))
         return list(self._db.scalars(stmt).all())
 
+    def count(self) -> int:
+        """Number of live (non-soft-deleted) hero records."""
+        stmt = select(func.count()).select_from(Hero).where(Hero.deleted_at.is_(None))
+        return int(self._db.scalar(stmt) or 0)
+
+    def next_free_slot(self) -> int:
+        """Smallest free slot in ``1..MAX_HEROES`` among live heroes.
+
+        The caller is expected to have already verified ``count() < MAX_HEROES``.
+        The UNIQUE constraint on ``slot`` is the authoritative guard against
+        races — two simultaneous creates that pick the same slot cannot both
+        commit.
+        """
+        stmt = select(Hero.slot).where(
+            Hero.deleted_at.is_(None), Hero.slot.is_not(None)
+        )
+        used = {int(slot) for slot in self._db.scalars(stmt).all() if slot is not None}
+        for slot in range(1, self.MAX_HEROES + 1):
+            if slot not in used:
+                return slot
+        raise RuntimeError("No free hero slot available")
+
     def get_by_id(self, hero_id: uuid.UUID | str) -> Hero | None:
         if not isinstance(hero_id, uuid.UUID):
             hero_id = uuid.UUID(str(hero_id))
@@ -42,7 +66,7 @@ class AdminHeroRepository:
 
     # ── write ────────────────────────────────────────────────
 
-    def create(self, data: HeroCreate) -> Hero:
+    def create(self, data: HeroCreate, slot: int | None = None) -> Hero:
         hero = Hero(
             title=data.title,
             subtitle=data.subtitle,
@@ -55,6 +79,7 @@ class AdminHeroRepository:
             ends_at=data.ends_at,
             seo_title=data.seo_title,
             seo_description=data.seo_description,
+            slot=slot,
         )
         self._db.add(hero)
         return hero
@@ -67,6 +92,7 @@ class AdminHeroRepository:
 
     def delete(self, hero: Hero) -> None:
         hero.soft_delete()
+        hero.slot = None
 
     def set_active(self, hero: Hero, is_active: bool) -> Hero:
         hero.is_active = is_active

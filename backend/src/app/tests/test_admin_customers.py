@@ -170,3 +170,129 @@ def test_delete_nonexistent_customer(client: TestClient) -> None:
         headers=admin_headers(),
     )
     assert "errors" in result
+
+
+# ── frontend contract ──────────────────────────────────────────────────
+
+FRONTEND_LIST_QUERY = """
+query Customers($page: Int, $pageSize: Int, $search: String, $status: String) {
+  customers(page: $page, pageSize: $pageSize, search: $search, status: $status) {
+    items { id firstName lastName email phone roleName status isEmailVerified createdAt updatedAt orderCount lifetimeValue adminNotes }
+    pagination { page pageSize total totalPages hasNext hasPrevious }
+  }
+}
+"""
+
+FRONTEND_CREATE_MUTATION = """
+mutation CreateCustomer($firstName: String!, $lastName: String!, $email: String!, $phone: String, $status: String) {
+  createCustomer(firstName: $firstName, lastName: $lastName, email: $email, phone: $phone, status: $status) {
+    id firstName lastName email phone roleName status isEmailVerified createdAt updatedAt orderCount lifetimeValue adminNotes
+  }
+}
+"""
+
+FRONTEND_UPDATE_MUTATION = """
+mutation UpdateCustomer($id: UUID!, $firstName: String!, $lastName: String!, $email: String!, $phone: String) {
+  updateCustomer(id: $id, firstName: $firstName, lastName: $lastName, email: $email, phone: $phone) {
+    id firstName lastName email phone roleName status isEmailVerified createdAt updatedAt orderCount lifetimeValue adminNotes
+  }
+}
+"""
+
+FRONTEND_UPDATE_NOTES_MUTATION = """
+mutation UpdateCustomerNotes($id: UUID!, $notes: String) {
+  updateCustomerNotes(id: $id, notes: $notes) {
+    id firstName lastName email phone roleName status isEmailVerified createdAt updatedAt orderCount lifetimeValue adminNotes
+  }
+}
+"""
+
+FRONTEND_SET_STATUS_MUTATION = """
+mutation SetCustomerStatus($id: UUID!, $status: String!) {
+  setCustomerStatus(id: $id, status: $status) {
+    id firstName lastName email phone roleName status isEmailVerified createdAt updatedAt orderCount lifetimeValue adminNotes
+  }
+}
+"""
+
+
+def test_frontend_list_customer_contract(client: TestClient) -> None:
+    create_user(role=UserRole.CUSTOMER, email="fe@example.com")
+    result = gql(
+        client,
+        FRONTEND_LIST_QUERY,
+        variables={"page": 1, "pageSize": 25},
+        headers=admin_headers(),
+    )
+    assert "errors" not in result, result
+    assert result["data"]["customers"]["pagination"]["total"] >= 1
+    item = next(
+        row for row in result["data"]["customers"]["items"] if row["email"] == "fe@example.com"
+    )
+    assert item["firstName"] == "Test"
+    assert item["lastName"] == "User"
+    assert item["status"] == "active"
+    assert item["isEmailVerified"] is True
+    assert item["orderCount"] == 0
+    assert result["data"]["customers"]["pagination"]["hasNext"] is False
+    assert result["data"]["customers"]["pagination"]["hasPrevious"] is False
+
+
+def test_frontend_customer_mutation_contract(client: TestClient) -> None:
+    created = gql(
+        client,
+        FRONTEND_CREATE_MUTATION,
+        variables={
+            "firstName": "Contract",
+            "lastName": "User",
+            "email": "contract@example.com",
+            "phone": "+91 90000 00009",
+            "status": "active",
+        },
+        headers=admin_headers(),
+    )
+    assert "errors" not in created, created
+    new_id = created["data"]["createCustomer"]["id"]
+    assert created["data"]["createCustomer"]["lifetimeValue"] == "0.00"
+
+    updated = gql(
+        client,
+        FRONTEND_UPDATE_MUTATION,
+        variables={
+            "id": new_id,
+            "firstName": "Contract2",
+            "lastName": "User2",
+            "email": "contract2@example.com",
+            "phone": "+91 90000 00010",
+        },
+        headers=admin_headers(),
+    )
+    assert "errors" not in updated, updated
+    assert updated["data"]["updateCustomer"]["firstName"] == "Contract2"
+
+    noted = gql(
+        client,
+        FRONTEND_UPDATE_NOTES_MUTATION,
+        variables={"id": new_id, "notes": "Frontend contract test"},
+        headers=admin_headers(),
+    )
+    assert "errors" not in noted, noted
+    assert noted["data"]["updateCustomerNotes"]["adminNotes"] == "Frontend contract test"
+
+    blocked = gql(
+        client,
+        FRONTEND_SET_STATUS_MUTATION,
+        variables={"id": new_id, "status": "suspended"},
+        headers=admin_headers(),
+    )
+    assert "errors" not in blocked, blocked
+    assert blocked["data"]["setCustomerStatus"]["status"] == "suspended"
+
+    deleted = gql(
+        client,
+        DELETE_MUTATION,
+        variables={"id": new_id},
+        headers=admin_headers(),
+    )
+    assert "errors" not in deleted, deleted
+    assert deleted["data"]["deleteCustomer"]["success"] is True

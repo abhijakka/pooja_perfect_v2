@@ -14,7 +14,7 @@ import { useWishlist } from "../../../hooks/useWishlist";
 import { products } from "../../(public)/storefront-data";
 import { authApi } from "../../../services/api/auth.api";
 import { useAppDispatch } from "../../../store/hooks";
-import { setUser } from "../../../store/slices/authSlice";
+import { setTokenExpiry, setUser } from "../../../store/slices/authSlice";
 
 export default function LoginPage() {
 	const router = useRouter();
@@ -42,11 +42,12 @@ export default function LoginPage() {
 		onSubmit: async (values) => {
 			setLoading(true);
 			try {
-				await authApi.login({
+				const tokens = await authApi.login({
 					identifier: values.identifier,
 					password: values.password,
 					remember: values.remember,
 				});
+				dispatch(setTokenExpiry(Date.parse(tokens.expires_at)));
 				const me = await authApi.me();
 				dispatch(
 					setUser({
@@ -82,7 +83,7 @@ export default function LoginPage() {
 				<div className={`login-field ${formik.touched.identifier && formik.errors.identifier ? "invalid" : ""}`}><label htmlFor="identifier">Email or mobile number</label><div className="login-input-wrapper"><Icon name="user" /><input id="identifier" {...formik.getFieldProps("identifier")} placeholder="Email or 10-digit mobile" autoComplete="username" maxLength={254} autoFocus /></div><small>{formik.touched.identifier && formik.errors.identifier ? formik.errors.identifier : "Enter your email or mobile number."}</small></div>
 				<div className={`login-field ${formik.touched.password && formik.errors.password ? "invalid" : ""}`}><label htmlFor="password">Password</label><div className="login-input-wrapper"><Icon name="lock" /><input id="password" type={showPassword ? "text" : "password"} {...formik.getFieldProps("password")} placeholder="Enter your password" autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}><Icon name={showPassword ? "eye-off" : "eye"} /></button></div><small>{formik.touched.password && formik.errors.password ? formik.errors.password : "Enter your password."}</small></div>
 				<div className="login-options"><label><input type="checkbox" name="remember" checked={formik.values.remember} onChange={formik.handleChange} /> Remember me</label><Link href="/forgot-password">Forgot password?</Link></div>
-				<button className="login-submit" type="submit" disabled={loading}>{loading ? <span className="login-spinner" /> : <>Sign In <Icon name="arrow-right" /></>}</button><div className="login-divider"><span>OR</span></div><button className="login-google" type="button" onClick={() => notify("Google sign in is ready to connect")}><strong>G</strong> Continue with Google</button><p className="login-signup">Don't have an account? <Link href="/signup">Create account</Link></p><div className="login-security"><Icon name="shield" /> Secure login · Your information is protected.</div>
+				<button className="login-submit" type="submit" disabled={loading}>{loading ? <span className="login-spinner" /> : <>Sign In <Icon name="arrow-right" /></>}</button><div className="login-divider"><span>OR</span></div><button className="login-google" type="button" onClick={() => notify("Google sign in is ready to connect")}><strong>G</strong> Continue with Google</button><p className="login-signup">Don&apos;t have an account? <Link href="/signup">Create account</Link></p><div className="login-security"><Icon name="shield" /> Secure login · Your information is protected.</div>
 			</form></div>
 		</section></main>
 		<PublicFooter activeNav={nav} wishlistCount={wishlistCount} cartCount={cartCount} onNavChange={setNav} onWishlist={() => router.push("/wishlist")} onProfile={() => notify("Already on the sign-in page")} />

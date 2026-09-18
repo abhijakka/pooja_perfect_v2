@@ -115,3 +115,17 @@ class AdminCouponRepository:
             )
             or 0
         )
+
+    def usage_counts(self, coupon_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        """Return a {coupon_id: usage_count} map for a list of coupons."""
+        if not coupon_ids:
+            return {}
+        rows = self._db.execute(
+            select(
+                CouponUsage.coupon_id,
+                func.count(CouponUsage.id).label("count"),
+            )
+            .where(CouponUsage.coupon_id.in_(coupon_ids))
+            .group_by(CouponUsage.coupon_id)
+        ).all()
+        return {row.coupon_id: row.count for row in rows}

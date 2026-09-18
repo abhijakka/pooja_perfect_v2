@@ -9,12 +9,13 @@ import { PublicFooter } from "../../components/layout/PublicFooter/PublicFooter"
 import { SubscriptionSection } from "../../components/subscription/SubscriptionSection";
 import { OfferBanner } from "../../components/layout/OfferBanner";
 import { TrustSection } from "../../components/layout/TrustSection";
-import { HeroSection } from "../../components/layout/HeroSection";
+import { HeroSection, type HeroSlide } from "../../components/layout/HeroSection";
 import { CategoriesSection } from "../../components/layout/CategoriesSection";
 import { ProductsSection } from "../../components/product/ProductCard/ProductsSection";
 import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { categoriesApi, type CategoryDto } from "../../services/api/categories.api";
+import { heroesApi, type PublicHero } from "../../services/api/hero.api";
 import { productsApi } from "../../services/api/products.api";
 import { useAppDispatch } from "../../store/hooks";
 import { setOnline } from "../../store/slices/connectionSlice";
@@ -207,6 +208,7 @@ export default function Storefront() {
   const [filter, setFilter] = useState("all");
   const [categoryRows, setCategoryRows] = useState<readonly (readonly [string, string, string])[]>(categories);
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>(products);
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([]);
   const { items: cart, count: cartCount, total: cartTotal, addItem, removeItem } = useCart();
   const { items: wishlist, count: wishlistCount, toggle } = useWishlist();
   const [cartOpen, setCartOpen] = useState(false);
@@ -227,7 +229,8 @@ export default function Storefront() {
     Promise.allSettled([
       categoriesApi.list(),
       productsApi.featured({ page: 1, pageSize: 8 }),
-    ]).then(([categoriesResult, productsResult]) => {
+      heroesApi.list(),
+    ]).then(([categoriesResult, productsResult, heroesResult]) => {
       if (!active) return;
       if (categoriesResult.status === "fulfilled" && categoriesResult.value.categories?.length) {
         const next = categoriesResult.value.categories.map((category: CategoryDto, index: number) => {
@@ -257,10 +260,32 @@ export default function Storefront() {
         setFeaturedProducts(products);
         dispatch(setOnline(false));
       }
+
+      if (heroesResult.status === "fulfilled" && heroesResult.value.heroes?.length) {
+        setHeroSlides(heroesResult.value.heroes.map((hero) => {
+          const image = hero.images.find((item) => item.isPrimary) ?? hero.images[0];
+          return {
+            title: hero.title,
+            subtitle: hero.subtitle ?? "",
+            badge: hero.badge ?? "",
+            accent: hero.accent ?? "rose",
+            ctaLabel: hero.ctaLabel ?? "Shop now",
+            ctaUrl: hero.ctaLink ?? undefined,
+            mediaUrl: image?.url ?? undefined,
+            mediaType: image?.mediaType === "video" ? "video" : "image",
+            altText: image?.altText ?? undefined,
+          };
+        }));
+      } else {
+        // Rendering with an empty slide list falls back to the built-in
+        // storefront hero (kept for the offline / not-configured case).
+        setHeroSlides([]);
+      }
     }).catch(() => {
       if (!active) return;
       setCategoryRows(categories);
       setFeaturedProducts(products);
+      setHeroSlides([]);
       dispatch(setOnline(false));
     });
 
@@ -398,6 +423,7 @@ export default function Storefront() {
 
       <main id="top">
         <HeroSection
+          slides={heroSlides.length ? heroSlides : undefined}
           onExplore={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })}
         />
         <CategoriesSection categories={categoryRows} />

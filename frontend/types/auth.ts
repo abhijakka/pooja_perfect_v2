@@ -18,6 +18,7 @@ export type UserResponse = {
 	is_phone_verified: boolean;
 	created_at: string;
 	updated_at: string;
+	expires_at?: string;
 };
 
 export type TokenResponse = {

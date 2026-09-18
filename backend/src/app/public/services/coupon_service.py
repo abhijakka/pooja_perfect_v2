@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING
 
 from app.core.exceptions import ValidationError
@@ -52,8 +52,12 @@ class CouponService:
         else:
             discount = coupon.value
         discount = min(discount, subtotal)
+        discount = discount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         return {
             "code": coupon.code,
+            "coupon_type": str(coupon.coupon_type),
+            "value": coupon.value,
+            "minimum_order_amount": coupon.minimum_order_amount,
+            "maximum_discount": coupon.maximum_discount,
             "discount": discount,
-            "coupon_type": coupon.coupon_type.value,
         }

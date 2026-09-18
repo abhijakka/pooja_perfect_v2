@@ -173,3 +173,8 @@ No files were deleted. No backend files were modified. No CSS was changed.
 
 - The FIRST/SECOND naming was mapped by capability (per STEP 7/13): the kept table is the **IP Address Management / IP policies** table because it is the one with CRUD, modals and filters; the removed table is the read-only **Visitor activity log** (which duplicates the `/admin/logs` page).
 - Git state note: a `git stash`/`git stash pop` baseline check mid-task briefly left conflict markers in the working tree. This was fully recovered by restoring the working tree from the (dangling) stash commit tree; the final repository contains no conflict markers and the task files are correct.
+
+
+
+
+

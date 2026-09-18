@@ -45,12 +45,14 @@ from app.public.api.graphql.mutations import (
 )
 from app.public.api.graphql.queries import (
     resolve_addresses,
+    resolve_apply_coupon,
     resolve_cart,
     resolve_categories,
     resolve_category,
     resolve_conversation,
     resolve_conversations,
     resolve_current_user,
+    resolve_heroes,
     resolve_messages,
     resolve_my_subscriptions,
     resolve_notifications,
@@ -71,6 +73,8 @@ from app.public.api.graphql.types.cart import CartType
 from app.public.api.graphql.types.category import CategoryType
 from app.public.api.graphql.types.chat import ChatMessageType, ConversationType
 from app.public.api.graphql.types.common import MutationResult, Page
+from app.public.api.graphql.types.coupon import CouponType
+from app.public.api.graphql.types.hero import HeroType
 from app.public.api.graphql.types.notification import NotificationType
 from app.public.api.graphql.types.order import CheckoutResult, OrderType
 from app.public.api.graphql.types.payment import PaymentType
@@ -95,6 +99,9 @@ class PublicQuery:
         resolver=resolve_product_reviews
     )
 
+    # ── hero / banners ───────────────────────────────────────
+    heroes: list[HeroType] = strawberry.field(resolver=resolve_heroes)
+
     # ── account ──────────────────────────────────────────────
     current_user: UserType = strawberry.field(resolver=resolve_current_user)
     addresses: list[AddressType] = strawberry.field(resolver=resolve_addresses)
@@ -104,6 +111,11 @@ class PublicQuery:
     # ── orders / payments ────────────────────────────────────
     orders: Page[OrderType] = strawberry.field(resolver=resolve_orders)
     order: OrderType = strawberry.field(resolver=resolve_order)
+
+    # ── coupons ──────────────────────────────────────────────
+    apply_coupon: CouponType | None = strawberry.field(
+        resolver=resolve_apply_coupon
+    )
 
     # ── subscriptions ────────────────────────────────────────
     subscription_plans: list[SubscriptionPlanType] = strawberry.field(

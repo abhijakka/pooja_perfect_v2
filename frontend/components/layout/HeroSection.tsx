@@ -1,32 +1,87 @@
 import { useEffect, useState } from "react";
 
-type HeroSectionProps = {
-  onExplore: () => void;
+export type HeroSlide = {
+  title: string;
+  subtitle: string;
+  badge: string;
+  accent: string;
+  ctaLabel: string;
+  ctaUrl?: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  altText?: string;
 };
 
-const heroImages = [
+type HeroSectionProps = {
+  onExplore: () => void;
+  slides?: HeroSlide[];
+};
+
+const fallbackImages = [
   "https://cdn.shopify.com/s/files/1/0901/3588/8184/files/LaxmiCharanDiyapair_2.png?v=1759706413&width=1200",
   "https://cdn.shopify.com/s/files/1/1857/6931/products/qFQv7mwH9F.jpg?v=1759383512",
   "https://cdn.shopify.com/s/files/1/0727/4210/9475/files/IMG_1294_1.jpg?v=1728298723&width=1200",
 ];
 
-// Duplicate first image for smooth infinite carousel
-const carouselImages = [...heroImages, heroImages[0]];
+const defaultSlides: HeroSlide[] = [
+  {
+    title: "Woven for distinction.",
+    subtitle: "Curated craftsmanship in every ritual.",
+    badge: "SIGNATURE EDIT",
+    accent: "rose",
+    ctaLabel: "Shop now",
+    ctaUrl: "#products",
+  },
+  {
+    title: "Sacred essentials, delivered daily.",
+    subtitle: "Ritual-ready pooja kits and décor for your home.",
+    badge: "NEW ARRIVALS",
+    accent: "gold",
+    ctaLabel: "Shop now",
+    ctaUrl: "#products",
+  },
+  {
+    title: "Festive décor for every home.",
+    subtitle: "Handcrafted idols, diyas and temple décor.",
+    badge: "BESTSELLERS",
+    accent: "sage",
+    ctaLabel: "Shop now",
+    ctaUrl: "#products",
+  },
+];
 
-const heroTitle = "Woven for distinction.";
+function mediaFor(slide: HeroSlide, index: number): string {
+  return (
+    slide.mediaUrl ||
+    fallbackImages[index % fallbackImages.length]
+  );
+}
 
-export function HeroSection({ onExplore }: HeroSectionProps) {
+// Duplicate first slide for smooth infinite carousel
+function buildCarousel(slides: HeroSlide[]) {
+  return [...slides, slides[0]];
+}
+
+export function HeroSection({
+  onExplore,
+  slides = defaultSlides,
+}: HeroSectionProps) {
   const [activeImage, setActiveImage] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(true);
 
+  const carousel = buildCarousel(slides);
+  const current = slides[Math.min(activeImage, slides.length - 1)] ?? slides[0];
+  const activeTitle = current?.title ?? "";
+
   // Start with one letter so it never becomes empty
-  const [typedTitle, setTypedTitle] = useState("W");
+  const [typedTitle, setTypedTitle] = useState(activeTitle.slice(0, 1) || " ");
 
   /* =========================
      TYPING ANIMATION
      ========================= */
   useEffect(() => {
-    let characterIndex = 1;
+    if (!activeTitle) return;
+    let characterIndex = activeTitle.slice(0, 1).length;
     let isDeleting = false;
     let timeoutId: number;
 
@@ -35,9 +90,9 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
         // Typing forward
         characterIndex++;
 
-        setTypedTitle(heroTitle.slice(0, characterIndex));
+        setTypedTitle(activeTitle.slice(0, characterIndex));
 
-        if (characterIndex >= heroTitle.length) {
+        if (characterIndex >= activeTitle.length) {
           isDeleting = true;
 
           // Pause after full text
@@ -53,7 +108,7 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
         // Never delete below 1 character
         if (characterIndex <= 1) {
           characterIndex = 1;
-          setTypedTitle(heroTitle.slice(0, 1));
+          setTypedTitle(activeTitle.slice(0, 1));
 
           isDeleting = false;
 
@@ -62,7 +117,7 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
           return;
         }
 
-        setTypedTitle(heroTitle.slice(0, characterIndex));
+        setTypedTitle(activeTitle.slice(0, characterIndex));
 
         timeoutId = window.setTimeout(type, 50);
       }
@@ -73,14 +128,14 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [activeTitle]);
 
   /* =========================
      IMAGE AUTO SLIDER
      ========================= */
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setActiveImage((current) => current + 1);
+      setActiveImage((currentIndex) => currentIndex + 1);
     }, 4000);
 
     return () => window.clearInterval(timer);
@@ -90,7 +145,7 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
      INFINITE SLIDER RESET
      ========================= */
   useEffect(() => {
-    if (activeImage !== heroImages.length) return;
+    if (activeImage !== slides.length) return;
 
     const resetTimer = window.setTimeout(() => {
       setIsTransitioning(false);
@@ -104,7 +159,7 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
     }, 800);
 
     return () => window.clearTimeout(resetTimer);
-  }, [activeImage]);
+  }, [activeImage, slides.length]);
 
   return (
     <section className="hero">
@@ -126,12 +181,12 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
                 : "none",
             }}
           >
-            {carouselImages.map((image, index) => (
+            {carousel.map((slide, index) => (
               <img
-                key={`${image}-${index}`}
+                key={index}
                 className="hero-slide"
-                src={image}
-                alt="PoojaPoint collection highlight"
+                src={mediaFor(slide, index)}
+                alt={slide.altText || `${slide.title} PoojaPoint highlight`}
                 style={{
                   position: "static",
                   width: "100%",
@@ -153,7 +208,7 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
         <div className="hero-content">
           <span className="hero-badge">
             <i style={{ backgroundColor: "red" }} />
-            SIGNATURE EDIT
+            {current?.badge || "SIGNATURE EDIT"}
           </span>
 
           {/* TYPING TITLE */}
@@ -163,14 +218,14 @@ export function HeroSection({ onExplore }: HeroSectionProps) {
           </h1>
 
           <p style={{ color: "whitesmoke" }}>
-            Curated craftsmanship in every ritual.
+            {current?.subtitle || "Curated craftsmanship in every ritual."}
           </p>
 
           <button
             className="primary-button"
             onClick={onExplore}
           >
-            Shop now
+            {current?.ctaLabel || "Shop now"}
           </button>
         </div>
 

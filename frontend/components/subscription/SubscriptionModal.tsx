@@ -1,7 +1,9 @@
 import { Icon } from "../Icon";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { DatePicker } from "./DatePicker";
+
+const subscribeToNothing = () => () => {};
 
 type Plan = {
   name: string;
@@ -161,9 +163,11 @@ export function SubscriptionModal({
   onDeliveryTime,
   onConfirm,
 }: SubscriptionModalProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
 
   if (!open || !mounted) return null;
   const activePlan = plan ? plans[plan] : null;

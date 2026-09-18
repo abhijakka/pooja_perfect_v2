@@ -42,6 +42,7 @@ from .hero import (
     mutate_remove_hero_image,
     mutate_set_hero_active,
     mutate_update_hero,
+    mutate_upload_hero_image,
 )
 from .ip_activity import (
     mutate_create_ip_activity,

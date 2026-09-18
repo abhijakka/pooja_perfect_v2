@@ -10,7 +10,7 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
 	const { user, isAuthenticated, isReady } = useAuth();
 	useEffect(() => {
 		if (!isReady) return;
-		if (!isAuthenticated || user?.role_name !== "admin") router.replace(isAuthenticated ? "/" : "/login");
+		if (!isAuthenticated || user?.role_name !== "admin") router.replace("/");
 	}, [isAuthenticated, isReady, router, user?.role_name]);
 	if (!isReady || !isAuthenticated || user?.role_name !== "admin") return null;
 	return <div className="admin-shell">{children}</div>;

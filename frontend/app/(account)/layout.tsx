@@ -9,7 +9,9 @@ export default function AccountLayout({ children }: Readonly<{ children: React.R
 	const { user, isAuthenticated, isReady } = useAuth();
 	useEffect(() => {
 		if (!isReady) return;
-		if (!isAuthenticated || user?.role_name !== "customer") router.replace(user?.role_name === "admin" ? "/admin" : "/login");
+		if (!isAuthenticated || user?.role_name !== "customer") {
+			router.replace(user?.role_name === "admin" ? "/admin" : "/");
+		}
 	}, [isAuthenticated, isReady, router, user?.role_name]);
 	if (!isReady || !isAuthenticated || user?.role_name !== "customer") return null;
 	return children;

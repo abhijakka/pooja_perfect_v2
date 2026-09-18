@@ -76,6 +76,10 @@ const blankForm: ProductForm = {
 };
 const statusText = (status: ProductStatus) =>
   status === "out" ? "Out of Stock" : status[0].toUpperCase() + status.slice(1);
+const primaryImageUrl = (product: Product) =>
+  product.images.find((image) => image.isPrimary)?.url ??
+  product.images[0]?.url ??
+  "";
 const toProduct = (
   product: AdminProduct,
   categoryMap: Map<string, string>,
@@ -578,8 +582,8 @@ export function AdminProductsPage() {
                         <td>
                           <div className="products-exact-product">
                             <div className="products-exact-image">
-                              {product.image ? (
-                                <img src={product.image} alt="" />
+                              {primaryImageUrl(product) ? (
+                                <img src={primaryImageUrl(product)} alt="" />
                               ) : (
                                 <span>{product.emoji}</span>
                               )}

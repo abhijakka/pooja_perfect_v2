@@ -468,6 +468,19 @@ def read_entries(day: date | None = None) -> list[dict]:
     return _parse_entries(text)
 
 
+def read_all_entries() -> list[dict]:
+    """Read and merge entries from every daily log file, oldest -> newest."""
+    entries: list[dict] = []
+    for log_path in _daily_files():
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        entries.extend(_parse_entries(text))
+    entries.sort(key=entry_datetime)
+    return entries
+
+
 def list_activity_logs(
     page: int = 1,
     page_size: int = 20,
@@ -475,8 +488,8 @@ def list_activity_logs(
     search: str | None = None,
     resource: str | None = None,
 ) -> tuple[list[dict], int]:
-    """Today's entries, newest first, with level/search/resource filtering."""
-    entries = list(reversed(read_entries()))
+    """Entries across all daily files, newest first, with filters."""
+    entries = list(reversed(read_all_entries()))
     if level:
         wanted = _LEVEL_BY_WORD.get(level.upper(), level.lower())
         entries = [e for e in entries if e.get("level") == wanted]

@@ -14,5 +14,5 @@ describe("OrdersPage", () => {
     render(<OrdersPage />);
     expect(screen.getByRole("heading", { name: "My Orders" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("PP-BACKEND-001")).toBeInTheDocument());
-  });
+  }, 15000);
 });

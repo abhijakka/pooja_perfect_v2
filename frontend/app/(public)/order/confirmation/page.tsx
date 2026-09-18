@@ -77,14 +77,18 @@ export default function ConfirmationPage() {
       router.replace("/products");
       return;
     }
+    let parsed: OrderSnapshot;
     try {
-      setOrder(JSON.parse(raw) as OrderSnapshot);
+      parsed = JSON.parse(raw) as OrderSnapshot;
     } catch {
       router.replace("/products");
       return;
     }
     window.sessionStorage.removeItem("pp_last_order");
-    setLoading(false);
+    void Promise.resolve().then(() => {
+      setOrder(parsed);
+      setLoading(false);
+    });
   }, [router]);
 
   const money = (value: number) => `₹${value.toLocaleString("en-IN")}`;
@@ -134,7 +138,7 @@ export default function ConfirmationPage() {
                   <span className="cn-status-label"><Icon name="truck" /> Estimated delivery</span>
                   <span className="cn-status-date">{deliveryWindowText}</span>
                 </div>
-                <p>We'll send you tracking updates once your order leaves our fulfilment centre.</p>
+                <p>We&apos;ll send you tracking updates once your order leaves our fulfilment centre.</p>
               </div>
 
               <div className="cn-timeline">

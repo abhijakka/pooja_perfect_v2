@@ -60,6 +60,7 @@ from app.admin.api.graphql.mutations import (
     mutate_update_order_status,
     mutate_update_product,
     mutate_update_product_stock,
+    mutate_upload_hero_image,
     mutate_upload_product_image,
     mutate_upsert_setting,
 )
@@ -307,6 +308,7 @@ class AdminMutation:
     remove_hero_image: MutationResult = strawberry.field(
         resolver=mutate_remove_hero_image
     )
+    upload_hero_image: HeroType = strawberry.field(resolver=mutate_upload_hero_image)
     upsert_setting: SettingType = strawberry.field(resolver=mutate_upsert_setting)
 
 
