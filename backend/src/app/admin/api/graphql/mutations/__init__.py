@@ -21,7 +21,7 @@ from .catalog import (
     mutate_update_product_stock,
     mutate_upload_product_image,
 )
-from .chat import mutate_mark_read, mutate_send_message
+from .chat import mutate_end_conversation, mutate_mark_read, mutate_send_message
 from .coupons import (
     mutate_create_coupon,
     mutate_delete_coupon,
@@ -90,6 +90,7 @@ __all__ = [
     "mutate_mark_notification_read",
     "mutate_mark_read",
     "mutate_moderate_review",
+    "mutate_end_conversation",
     "mutate_remove_hero_image",
     "mutate_remove_product_image",
     "mutate_send_message",

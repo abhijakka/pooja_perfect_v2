@@ -1,24 +1,37 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import type { UiChatMessage } from "../../types/chat";
 
-export type ChatMessage = { id: number; author: "admin" | "customer"; text: string; time: string };
+export type GuestStep = "none" | "name" | "email" | "done";
 
-type ChatState = { open: boolean; messages: ChatMessage[]; typing: boolean; unread: boolean };
+type ChatState = {
+	open: boolean;
+	booting: boolean;
+	loadingMessages: boolean;
+	sending: boolean;
+	error: string | null;
+	conversationId: string | null;
+	guestName: string;
+	guestEmail: string;
+	guestStep: GuestStep;
+	ended: boolean;
+	messages: UiChatMessage[];
+	unread: boolean;
+};
 
-const initialMessages: ChatMessage[] = [
-	{ id: 1, author: "admin", text: "Hi! Welcome to PoojaPoint. How can we help you today?", time: "Support · 10:32 AM" },
-	{ id: 2, author: "customer", text: "Hi, I need help finding a pooja gift under ₹1000.", time: "You · 10:33 AM" },
-	{ id: 3, author: "admin", text: "Of course! We have several beautiful options under ₹1000. I will help you find the best one.", time: "Support · 10:34 AM" },
-];
-
-const initialState: ChatState = { open: false, messages: initialMessages, typing: false, unread: true };
-
-export function replyFor(text: string): string {
-	const message = text.toLowerCase();
-	if (message.includes("gift")) return "Absolutely! We can help you choose a beautiful pooja gift. What is your preferred budget?";
-	if (message.includes("order")) return "Sure! Please share your order number and we will check the current status for you.";
-	if (message.includes("delivery")) return "Sure. Please share your PIN code and we will help you with delivery information.";
-	return "Thanks for your message! Our PoojaPoint support team can help with products, orders, payments and delivery.";
-}
+const initialState: ChatState = {
+	open: false,
+	booting: false,
+	loadingMessages: false,
+	sending: false,
+	error: null,
+	conversationId: null,
+	guestName: "",
+	guestEmail: "",
+	guestStep: "none",
+	ended: false,
+	messages: [],
+	unread: false,
+};
 
 const chatSlice = createSlice({
 	name: "chat",
@@ -31,14 +44,78 @@ const chatSlice = createSlice({
 		closeChat: (state) => {
 			state.open = false;
 		},
-		appendMessage: (state, action: PayloadAction<ChatMessage>) => {
-			state.messages.push(action.payload);
+		setBooting: (state, action: PayloadAction<boolean>) => {
+			state.booting = action.payload;
 		},
-		setTyping: (state, action: PayloadAction<boolean>) => {
-			state.typing = action.payload;
+		setLoadingMessages: (state, action: PayloadAction<boolean>) => {
+			state.loadingMessages = action.payload;
+		},
+		setSending: (state, action: PayloadAction<boolean>) => {
+			state.sending = action.payload;
+		},
+		setChatError: (state, action: PayloadAction<string | null>) => {
+			state.error = action.payload;
+		},
+		setConversation: (
+			state,
+			action: PayloadAction<{ id: string; ended: boolean } | null>,
+		) => {
+			if (action.payload === null) {
+				state.conversationId = null;
+				state.ended = false;
+				return;
+			}
+			state.conversationId = action.payload.id;
+			state.ended = action.payload.ended;
+		},
+		setGuestName: (state, action: PayloadAction<string>) => {
+			state.guestName = action.payload;
+		},
+		setGuestEmail: (state, action: PayloadAction<string>) => {
+			state.guestEmail = action.payload;
+		},
+		setGuestStep: (state, action: PayloadAction<GuestStep>) => {
+			state.guestStep = action.payload;
+		},
+		replaceMessages: (state, action: PayloadAction<UiChatMessage[]>) => {
+			state.messages = action.payload;
+		},
+		appendMessage: (state, action: PayloadAction<UiChatMessage>) => {
+			const incoming = action.payload;
+			if (state.messages.some((message) => message.id === incoming.id)) return;
+			state.messages.push(incoming);
+			if (!state.open) state.unread = true;
+		},
+		setUnread: (state, action: PayloadAction<boolean>) => {
+			state.unread = action.payload;
+		},
+		resetChat: (state) => {
+			state.conversationId = null;
+			state.ended = false;
+			state.messages = [];
+			state.error = null;
+			state.sending = false;
+			state.booting = false;
+			state.loadingMessages = false;
+			state.guestStep = "none";
 		},
 	},
 });
 
-export const { openChat, closeChat, appendMessage, setTyping } = chatSlice.actions;
+export const {
+	openChat,
+	closeChat,
+	setBooting,
+	setLoadingMessages,
+	setSending,
+	setChatError,
+	setConversation,
+	setGuestName,
+	setGuestEmail,
+	setGuestStep,
+	replaceMessages,
+	appendMessage,
+	setUnread,
+	resetChat,
+} = chatSlice.actions;
 export default chatSlice.reducer;

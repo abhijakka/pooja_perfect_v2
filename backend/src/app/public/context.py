@@ -61,7 +61,14 @@ def require_user_or_guest(ctx: PublicContext) -> User:
         if user is not None:
             return user
     guest_id = secrets.token_hex(12)
-    user = User(first_name="Guest", last_name="Customer", email=f"guest-{guest_id}@guest.local", role_name=UserRole.CUSTOMER, status=UserStatus.ACTIVE)
+    user = User(
+        first_name="Guest",
+        last_name="Customer",
+        email=f"guest-{guest_id}@guest.local",
+        role_name=UserRole.CUSTOMER,
+        status=UserStatus.ACTIVE,
+        is_guest=True,
+    )
     ctx.db.add(user)
     ctx.db.flush()
     if cart is None:

@@ -7,7 +7,12 @@ delegate to a service, and map the result to GraphQL types.
 
 from .cart import resolve_cart
 from .categories import resolve_categories, resolve_category
-from .chat import resolve_conversation, resolve_conversations, resolve_messages
+from .chat import (
+    resolve_active_conversation,
+    resolve_conversation,
+    resolve_conversations,
+    resolve_messages,
+)
 from .coupon import resolve_apply_coupon
 from .hero import resolve_heroes
 from .notifications import resolve_notifications
@@ -19,6 +24,7 @@ from .subscriptions import resolve_my_subscriptions, resolve_subscription_plans
 from .wishlist import resolve_wishlist
 
 __all__ = [
+    "resolve_active_conversation",
     "resolve_addresses",
     "resolve_apply_coupon",
     "resolve_cart",

@@ -1,25 +1,447 @@
 "use client";
 
-import { ChangeEvent, KeyboardEvent, useMemo, useState } from "react";
+import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AdminHeader } from "./AdminHeader";
 import { AdminIcon, AdminIconSprite } from "./AdminIcon";
 import { AdminSidebar } from "./AdminSidebar";
+import { adminApi } from "../../../services/api/admin.api";
+import type { AdminChatConversation, AdminChatMessage } from "../../../services/api/admin.api";
+import { subscribeToAdminChat } from "../../../services/websocket/chat.socket";
 
-type Status = "Online" | "Away" | "Offline";
-type Customer = { name: string; initials: string; status: Status; email: string; orders: number; time: string; preview: string; unread: number };
-type Message = { sender: "customer" | "admin"; text: string; time: string; order?: boolean };
-const customers: Customer[] = [
-	{ name: "Abhinav Kumar", initials: "AK", status: "Online", email: "abhinav@example.com", orders: 4, time: "Now", preview: "Can you deliver before 9 AM?", unread: 2 }, { name: "Riya Sharma", initials: "RS", status: "Online", email: "riya@example.com", orders: 12, time: "5m", preview: "Thank you for your help!", unread: 1 }, { name: "Suresh Mehta", initials: "SM", status: "Away", email: "suresh@example.com", orders: 8, time: "18m", preview: "Where is my order?", unread: 0 }, { name: "Priya Menon", initials: "PM", status: "Offline", email: "priya@example.com", orders: 3, time: "1h", preview: "I want to change my delivery time.", unread: 0 }, { name: "Anjali Rao", initials: "AR", status: "Online", email: "anjali@example.com", orders: 7, time: "2h", preview: "Can I add one more product?", unread: 0 }, { name: "Vinay Nair", initials: "VN", status: "Offline", email: "vinay@example.com", orders: 15, time: "Yesterday", preview: "Payment failed on my order.", unread: 0 },
-];
-const initialMessages: Message[] = [
-	{ sender: "customer", text: "Hello, I placed my pooja subscription order. Can you deliver it before 9 AM tomorrow?", time: "10:32 AM" }, { sender: "admin", text: "Hello Abhinav! Yes, your delivery is scheduled for the early morning slot.", time: "10:34 AM · Seen" }, { sender: "customer", text: "Great. Please make sure the flowers are fresh. Thank you.", time: "10:36 AM" }, { sender: "admin", text: "Absolutely. We have added your request to the order notes.", time: "10:38 AM · Seen", order: true }, { sender: "customer", text: "Can you also confirm the delivery address?", time: "10:40 AM" }, { sender: "admin", text: "Sure. It is Flat 402, Sri Sai Residency, Madhapur, Hyderabad - 500081.", time: "10:41 AM · Seen" },
-];
-const statusColor = (status: Status) => status === "Online" ? "online" : status === "Away" ? "away" : "offline";
+type Status = "Online" | "Away" | "Ended";
+
+function initialsOf(name: string): string {
+	return name
+		.split(/\s+/)
+		.slice(0, 2)
+		.map((part) => part.charAt(0).toUpperCase())
+		.join("") || "?";
+}
+
+function timeAgo(value: string | null): string {
+	if (!value) return "";
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "";
+	const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+	if (seconds < 60) return "Now";
+	if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+	if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+	const days = Math.floor(seconds / 86400);
+	if (days < 7) return `${days}d`;
+	return date.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+function clockTime(value: string | null): string {
+	if (!value) return "";
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "";
+	return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function statusFor(conversation: AdminChatConversation): Status {
+	return conversation.status === "ended" ? "Ended" : "Online";
+}
+
+function statusClass(status: Status): string {
+	return status === "Online" ? "online" : "offline";
+}
 
 export function AdminChatPage() {
-	const [sidebarOpen, setSidebarOpen] = useState(false); const [listOpen, setListOpen] = useState(false); const [query, setQuery] = useState(""); const [selectedName, setSelectedName] = useState(customers[0].name); const [messages, setMessages] = useState(initialMessages); const [message, setMessage] = useState(""); const [attachment, setAttachment] = useState(""); const [toast, setToast] = useState("");
-	const selected = customers.find((customer) => customer.name === selectedName) ?? customers[0]; const visibleCustomers = useMemo(() => customers.filter((customer) => customer.name.toLowerCase().includes(query.toLowerCase().trim())), [query]);
-	const notify = (text: string) => { setToast(text); window.setTimeout(() => setToast(""), 2200); }; const selectCustomer = (customer: Customer) => { setSelectedName(customer.name); setListOpen(false); notify(`Opened ${customer.name}`); }; const sendMessage = () => { const text = message.trim(); if (!text) { notify("Type a message first"); return; } const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); setMessages((current) => [...current, { sender: "admin", text, time: `${time} · Sending` }]); setMessage(""); window.setTimeout(() => setMessages((current) => current.map((item) => item.time === `${time} · Sending` ? { ...item, time: `${time} · Sent` } : item)), 500); };
-	const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }; const attach = (event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (file) { setAttachment(file.name); notify("Attachment selected"); } }; const quickReply = (label: string) => setMessage(label === "How can I help?" ? "Hello! How can I help you today?" : label === "Order preparing" ? "Your order is being prepared." : label === "Out for delivery" ? "Your order is out for delivery." : "Thank you for contacting PoojaPoint!");
-	return <div className="admin-dashboard"><AdminIconSprite /><AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} activeHref="/admin/chat" /><main className="admin-main"><AdminHeader onMenu={() => setSidebarOpen(true)} query={query} onQuery={setQuery} title="Customer Chat" subtitle="Chat directly with PoojaPoint customers" /><div className="admin-content admin-chat-content"><div className="admin-chat-layout"><section className={`admin-chat-conversations ${listOpen ? "is-open" : ""}`}><div className="admin-chat-conv-head"><div className="admin-chat-conv-title"><span>Conversations</span><span className="admin-chat-count">{customers.reduce((total, customer) => total + customer.unread, 0)}</span></div><label className="admin-chat-search"><AdminIcon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search conversations..." /></label></div><div className="admin-chat-list">{visibleCustomers.map((customer) => <button className={`admin-chat-person ${customer.name === selectedName ? "active" : ""}`} type="button" key={customer.name} onClick={() => selectCustomer(customer)}><span className="admin-chat-avatar">{customer.initials}{customer.status === "Online" && <i className="admin-chat-online" />}</span><span className="admin-chat-person-body"><span className="admin-chat-person-top"><strong>{customer.name}</strong><small>{customer.time}</small></span><span className="admin-chat-preview">{customer.preview}</span></span>{customer.unread > 0 && <span className="admin-chat-unread">{customer.unread}</span>}</button>)}</div></section><section className="admin-chat-main"><header className="admin-chat-head"><button className="admin-chat-action admin-chat-list-button" type="button" aria-label="Open conversations" onClick={() => setListOpen(true)}><AdminIcon name="menu" /></button><div className="admin-chat-customer-head"><span className="admin-chat-avatar large">{selected.initials}{selected.status === "Online" && <i className="admin-chat-online" />}</span><div><strong>{selected.name}</strong><span className={`admin-chat-status ${statusColor(selected.status)}`}><i />{selected.status} · Customer</span></div></div><div className="admin-chat-actions"><button className="admin-chat-action" type="button" aria-label="Call customer" onClick={() => notify("Calling customer...")}><AdminIcon name="phone" /></button><button className="admin-chat-action" type="button" aria-label="More customer actions" onClick={() => notify("Customer actions opened")}><AdminIcon name="more" /></button></div></header><div className="admin-chat-messages"><div className="admin-chat-date"><span>Today, 20 August</span></div>{messages.map((item, index) => <div className={`admin-chat-message ${item.sender}`} key={`${item.time}-${index}`}><div><div className="admin-chat-bubble">{item.text}{item.order && <div className="admin-chat-order"><div><strong>#PP102834</strong><b>Processing</b></div><p>Subscription · 1 Month / 1 Day · Delivery 6:00 AM - 9:00 AM</p></div>}</div><span className="admin-chat-meta">{item.time}</span></div></div>)}</div><div className="admin-chat-composer"><div className="admin-chat-quick">{["How can I help?", "Order preparing", "Out for delivery", "Thank you"].map((label) => <button type="button" key={label} onClick={() => quickReply(label)}>{label}</button>)}</div>{attachment && <div className="admin-chat-file"><span>{attachment}</span><button type="button" aria-label="Remove attachment" onClick={() => setAttachment("")}><AdminIcon name="close" /></button></div>}<div className="admin-chat-compose"><label className="admin-chat-compose-button" aria-label="Attach file"><AdminIcon name="upload" /><input type="file" accept="image/*,.pdf,.doc,.docx" onChange={attach} /></label><textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={keyDown} placeholder="Type a message..." rows={1} /><button className="admin-chat-compose-button" type="button" aria-label="Add emoji" onClick={() => setMessage((current) => `${current}${current ? " " : ""}🙏`)}><span aria-hidden="true">☺</span></button><button className="admin-chat-send" type="button" aria-label="Send message" onClick={sendMessage}><AdminIcon name="send" /></button></div></div></section><aside className="admin-chat-info"><div className="admin-chat-info-head"><span className="admin-chat-big-avatar">{selected.initials}</span><strong>{selected.name}</strong><small>{selected.email}</small><span className="admin-chat-online-label"><i />{selected.status}</span></div><div className="admin-chat-info-section"><h3>Customer Details</h3><p><span>Customer ID</span><b>CUS-0004</b></p><p><span>Orders</span><b>{selected.orders}</b></p><p><span>Member Since</span><b>Jun 2026</b></p><p><span>Phone</span><b>+91 98765 43210</b></p></div><div className="admin-chat-info-section"><h3>Latest Order</h3><div className="admin-chat-info-order"><b>#PP102834</b><strong>Pooja Subscription</strong><span>₹630 · Processing</span></div><button type="button" onClick={() => notify("Opening order details...")}>View Order</button><button type="button" onClick={() => notify("Order note opened")}>Add Order Note</button></div><div className="admin-chat-info-section"><h3>Quick Actions</h3><button type="button" onClick={() => notify("Customer profile opened")}>View Customer</button><button type="button" onClick={() => notify("Email action opened")}>Send Email</button><button type="button" onClick={() => window.confirm("Archive this conversation?") && notify("Conversation archived")}>Archive Conversation</button></div></aside></div></div></main><div className={`admin-chat-toast ${toast ? "show" : ""}`}>{toast}</div></div>;
+	const [sidebarOpen, setSidebarOpen] = useState(false);
+	const [listOpen, setListOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const [toast, setToast] = useState("");
+	const [conversations, setConversations] = useState<AdminChatConversation[]>([]);
+	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [messages, setMessages] = useState<AdminChatMessage[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [sending, setSending] = useState(false);
+	const [message, setMessage] = useState("");
+	const [attachment, setAttachment] = useState("");
+	const [showEmoji, setShowEmoji] = useState(false);
+
+	const notify = useCallback((text: string) => {
+		setToast(text);
+		window.setTimeout(() => setToast(""), 2200);
+	}, []);
+
+	const refreshConversations = useCallback(
+		async (keepSelection: string | null = selectedId) => {
+			try {
+				const result = await adminApi.listChatConversations(1, 50);
+				setConversations(result.conversations.items);
+				const stillExists =
+					keepSelection && result.conversations.items.some((item) => item.id === keepSelection);
+				if (!stillExists) {
+					const next = result.conversations.items[0] ?? null;
+					setSelectedId(next ? next.id : null);
+				}
+			} catch {
+				notify("Could not load conversations");
+			}
+		},
+		[selectedId, notify],
+	);
+
+	const loadMessages = useCallback(
+		async (conversationId: string) => {
+			try {
+				const result = await adminApi.getChatMessages(conversationId, 1, 100);
+				const items = [...result.messages.items].reverse();
+				setMessages(items);
+			} catch {
+				setMessages([]);
+				notify("Could not load this conversation");
+			}
+		},
+		[notify],
+	);
+
+	useEffect(() => {
+		let isActive = true;
+		setLoading(true);
+		adminApi
+			.listChatConversations(1, 50)
+			.then((result) => {
+				if (!isActive) return;
+				setConversations(result.conversations.items);
+				setSelectedId(result.conversations.items[0]?.id ?? null);
+			})
+			.catch(() => {
+				if (isActive) notify("Could not load conversations");
+			})
+			.finally(() => {
+				if (isActive) setLoading(false);
+			});
+		return () => {
+			isActive = false;
+		};
+	}, [notify]);
+
+	useEffect(() => {
+		if (!selectedId) return;
+		loadMessages(selectedId);
+		adminApi.markChatRead(selectedId).catch(() => undefined);
+	}, [selectedId, loadMessages]);
+
+	useEffect(() => {
+		if (!selectedId) return;
+		const conversationId = selectedId;
+		const cleanup = subscribeToAdminChat({
+			conversationId,
+			onMessage: (incoming) => {
+				setMessages((current) =>
+					current.some((item) => item.id === incoming.id)
+						? current
+						: [...current, incoming],
+				);
+				refreshConversations(conversationId);
+			},
+		});
+		const timer = window.setInterval(() => {
+			refreshConversations(conversationId);
+		}, 10000);
+		return () => {
+			cleanup();
+			window.clearInterval(timer);
+		};
+	}, [selectedId, refreshConversations]);
+
+	const visibleConversations = useMemo(
+		() =>
+			conversations.filter((conversation) => {
+				const needle = query.trim().toLowerCase();
+				if (!needle) return true;
+				return `${conversation.customerName ?? ""} ${conversation.customerEmail ?? ""} ${conversation.lastMessage ?? ""}`
+					.toLowerCase()
+					.includes(needle);
+			}),
+		[conversations, query],
+	);
+
+	const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null;
+	const hasSelected = selected !== null;
+	const totalUnread = conversations.reduce((total, item) => total + item.unreadCount, 0);
+
+	const selectConversation = (conversation: AdminChatConversation) => {
+		setSelectedId(conversation.id);
+		setListOpen(false);
+		adminApi.markChatRead(conversation.id).catch(() => undefined);
+	};
+
+	const sendMessage = () => {
+		const text = message.trim();
+		if (!text || !hasSelected || sending || selected.status === "ended") {
+			if (!text) notify("Type a message first");
+			return;
+		}
+		setSending(true);
+		const optimistic: AdminChatMessage = {
+			id: `local-${Date.now()}`,
+			conversationId: selected.id,
+			senderId: null,
+			messageType: "text",
+			content: text,
+			isRead: false,
+			createdAt: new Date().toISOString(),
+		};
+		setMessages((current) => [...current, optimistic]);
+		setMessage("");
+		adminApi
+			.sendChatMessage(selected.id, text)
+			.then((result) => {
+				setMessages((current) => current.map((item) => (item.id === optimistic.id ? result.sendMessage : item)));
+				refreshConversations(selected.id);
+			})
+			.catch(() => notify("Could not send the message"))
+			.finally(() => setSending(false));
+	};
+
+	const endChat = () => {
+		if (!hasSelected || selected.status === "ended") return;
+		setConversations((current) =>
+			current.map((item) =>
+				item.id === selected.id ? { ...item, status: "ended" } : item,
+			),
+		);
+		adminApi
+			.endChatConversation(selected.id)
+			.then(() => notify("Conversation ended"))
+			.catch(() => notify("Could not end the conversation"));
+	};
+
+	const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (event.key === "Enter" && !event.shiftKey) {
+			event.preventDefault();
+			sendMessage();
+		}
+	};
+
+	const attach = (event: ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (file) {
+			setAttachment(file.name);
+			notify("Attachment selected");
+		}
+	};
+
+	const quickReply = (label: string) =>
+		setMessage(
+			label === "How can I help?"
+				? "Hello! How can I help you today?"
+				: label === "Order preparing"
+					? "Your order is being prepared."
+					: label === "Out for delivery"
+						? "Your order is out for delivery."
+						: "Thank you for contacting PoojaPoint!",
+		);
+
+	const quickEmojis = ["😊", "🙏", "👍", "❤️", "😔", "🎉", "🙌", "✨"];
+
+	const insertEmoji = (emoji: string) => {
+		setMessage((prev) => prev + (prev ? " " : "") + emoji);
+		setShowEmoji(false);
+	};
+
+	return (
+		<div className="admin-dashboard">
+			<AdminIconSprite />
+			<AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} activeHref="/admin/chat" />
+			<main className="admin-main">
+				<AdminHeader onMenu={() => setSidebarOpen(true)} query={query} onQuery={setQuery} title="Customer Chat" subtitle="Chat directly with PoojaPoint customers" />
+				<div className="admin-content admin-chat-content">
+					<div className="admin-chat-layout">
+						<section className={`admin-chat-conversations ${listOpen ? "is-open" : ""}`}>
+							<div className="admin-chat-conv-head">
+								<div className="admin-chat-conv-title">
+									<span>Conversations</span>
+									<span className="admin-chat-count">{totalUnread}</span>
+								</div>
+								<label className="admin-chat-search">
+									<AdminIcon name="search" />
+									<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search conversations..." />
+								</label>
+							</div>
+							<div className="admin-chat-list">
+								{loading && conversations.length === 0 && (
+									<div className="admin-chat-date"><span>Loading conversations...</span></div>
+								)}
+								{!loading && conversations.length === 0 && (
+									<div className="admin-chat-date"><span>No conversations yet. Customers will appear here when they start a chat.</span></div>
+								)}
+								{visibleConversations.map((conversation) => {
+									const name = conversation.customerName ?? "Guest Customer";
+									return (
+										<button
+											className={`admin-chat-person ${conversation.id === selectedId ? "active" : ""}`}
+											type="button"
+											key={conversation.id}
+											onClick={() => selectConversation(conversation)}
+										>
+											<span className="admin-chat-avatar">
+												{initialsOf(name)}
+												{conversation.status === "active" && <i className="admin-chat-online" />}
+											</span>
+											<span className="admin-chat-person-body">
+												<span className="admin-chat-person-top">
+													<strong>{name}</strong>
+													<small>{timeAgo(conversation.updatedAt)}</small>
+												</span>
+												<span className="admin-chat-preview">{conversation.lastMessage ?? "No messages yet"}</span>
+											</span>
+											{conversation.unreadCount > 0 && <span className="admin-chat-unread">{conversation.unreadCount}</span>}
+										</button>
+									);
+								})}
+							</div>
+						</section>
+						<section className="admin-chat-main">
+							{!hasSelected ? (
+								<div className="admin-chat-date"><span>Select a conversation to start supporting a customer.</span></div>
+							) : (
+								<>
+									<header className="admin-chat-head">
+										<button className="admin-chat-action admin-chat-list-button" type="button" aria-label="Open conversations" onClick={() => setListOpen(true)}>
+											<AdminIcon name="menu" />
+										</button>
+										<div className="admin-chat-customer-head">
+											<span className="admin-chat-avatar large">
+												{initialsOf(selected.customerName ?? "Guest Customer")}
+												{selected.status === "active" && <i className="admin-chat-online" />}
+											</span>
+											<div>
+												<strong>{selected.customerName ?? "Guest Customer"}</strong>
+												<span className={`admin-chat-status ${statusClass(statusFor(selected))}`}>
+													<i />
+													{statusFor(selected)}
+													{selected.customerName ? " · Customer" : " · Guest"}
+												</span>
+											</div>
+										</div>
+										<div className="admin-chat-actions">
+											<button className="admin-chat-action" type="button" aria-label="End conversation" onClick={endChat} disabled={selected.status === "ended"}>
+												<AdminIcon name="close" />
+											</button>
+										</div>
+									</header>
+									<div className="admin-chat-messages">
+										{messages.length === 0 && <div className="admin-chat-date"><span>Start of conversation</span></div>}
+										{messages.map((item) => {
+											const isCustomer = item.senderId != null && item.senderId === selected.customerId;
+											return (
+												<div className={`admin-chat-message ${isCustomer ? "customer" : "admin"}`} key={item.id}>
+													<div>
+														<div className="admin-chat-bubble">{item.content}</div>
+														<span className="admin-chat-meta">{clockTime(item.createdAt)}</span>
+													</div>
+												</div>
+											);
+										})}
+									</div>
+									<div className="admin-chat-composer">
+										<div className="admin-chat-quick">
+											{["How can I help?", "Order preparing", "Out for delivery", "Thank you"].map((label) => (
+												<button type="button" key={label} onClick={() => quickReply(label)} disabled={selected.status === "ended"}>
+													{label}
+												</button>
+											))}
+										</div>
+										{attachment && (
+											<div className="admin-chat-file">
+												<span>{attachment}</span>
+												<button type="button" aria-label="Remove attachment" onClick={() => setAttachment("")}>
+													<AdminIcon name="close" />
+												</button>
+											</div>
+										)}
+										{showEmoji && (
+											<div className="admin-chat-emoji-picker">
+												{quickEmojis.map((emoji) => (
+													<button
+														key={emoji}
+														type="button"
+														className="admin-chat-emoji-btn"
+														onClick={() => insertEmoji(emoji)}
+														aria-label={`Insert ${emoji}`}
+													>
+														{emoji}
+													</button>
+												))}
+											</div>
+										)}
+										<div className="admin-chat-compose">
+											<label className="admin-chat-compose-button" aria-label="Attach file">
+												<AdminIcon name="upload" />
+												<input type="file" accept="image/*,.pdf,.doc,.docx" onChange={attach} disabled={selected.status === "ended"} />
+											</label>
+											<textarea
+												value={message}
+												onChange={(event) => setMessage(event.target.value)}
+												onKeyDown={keyDown}
+												placeholder={selected.status === "ended" ? "Conversation ended — start a new chat" : "Type a message..."}
+												rows={1}
+												disabled={selected.status === "ended"}
+												aria-label="Type a message"
+											/>
+											<button className="admin-chat-compose-button" type="button" aria-label="Add emoji" disabled={selected.status === "ended"} onClick={() => setShowEmoji(!showEmoji)}>
+												<span aria-hidden="true">😊</span>
+											</button>
+											<button className="admin-chat-send" type="button" aria-label="Send message" onClick={sendMessage} disabled={selected.status === "ended"}>
+												<AdminIcon name="send" />
+											</button>
+										</div>
+									</div>
+								</>
+							)}
+						</section>
+						{hasSelected && selected.customerName && (
+							<aside className="admin-chat-info">
+								<div className="admin-chat-info-head">
+									<span className="admin-chat-big-avatar">{initialsOf(selected.customerName)}</span>
+									<strong>{selected.customerName}</strong>
+									<small>{selected.customerEmail}</small>
+									<span className="admin-chat-online-label">
+										<i />
+										{statusFor(selected)}
+									</span>
+								</div>
+								<div className="admin-chat-info-section">
+									<h3>Conversation</h3>
+									<p><span>Status</span><b>{selected.status === "ended" ? "Ended" : "Active"}</b></p>
+									<p><span>Unread</span><b>{selected.unreadCount}</b></p>
+									<p><span>Customer</span><b>{selected.customerEmail ?? "Guest (no account)"}</b></p>
+								</div>
+								<div className="admin-chat-info-section">
+									<h3>Quick Actions</h3>
+									<button type="button" onClick={() => notify("Customer profile opened")}>
+										View Customer
+									</button>
+									<button type="button" onClick={() => notify("Email action opened")}>
+										Send Email
+									</button>
+									<button
+										type="button"
+										onClick={() =>
+											window.confirm("End this conversation?") && endChat()
+										}
+									>
+										End Conversation
+									</button>
+								</div>
+							</aside>
+						)}
+					</div>
+				</div>
+			</main>
+			<div className={`admin-chat-toast ${toast ? "show" : ""}`} role="status">
+				<span className="admin-chat-toast-icon">
+					<AdminIcon name="check" />
+				</span>
+				<div>
+					<strong>PoojaPoint</strong>
+					<p>{toast}</p>
+				</div>
+			</div>
+		</div>
+	);
 }

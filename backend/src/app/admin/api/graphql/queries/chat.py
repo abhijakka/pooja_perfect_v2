@@ -46,7 +46,7 @@ def resolve_conversations(
     ctx: AdminContext = info.context
     svc = ChatService(ctx.db)
     pagination = PaginationInput(page=page, page_size=page_size)
-    conversations, total = svc.conversations(pagination)
+    conversations, total = svc.conversations(ctx.admin.id, pagination)
     total_pages = max(1, (total + page_size - 1) // page_size)
     return Page(
         items=[_to_conversation_type(c) for c in conversations],
@@ -64,7 +64,7 @@ def resolve_conversations(
 def resolve_conversation(self, info: Info, id: uuid.UUID) -> ConversationType:
     ctx: AdminContext = info.context
     svc = ChatService(ctx.db)
-    return _to_conversation_type(svc.get_conversation(id))
+    return _to_conversation_type(svc.get_conversation(id, ctx.admin.id))
 
 
 def resolve_messages(

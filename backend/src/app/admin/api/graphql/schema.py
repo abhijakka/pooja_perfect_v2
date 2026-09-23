@@ -8,6 +8,7 @@ services below.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from typing import Any
 
 import strawberry
@@ -36,6 +37,7 @@ from app.admin.api.graphql.mutations import (
     mutate_delete_product,
     mutate_delete_review,
     mutate_delete_wishlist_item,
+    mutate_end_conversation,
     mutate_mark_notification_read,
     mutate_mark_read,
     mutate_moderate_review,
@@ -100,6 +102,7 @@ from app.admin.api.graphql.queries import (
     resolve_wishlist_items,
     resolve_wishlist_overview,
 )
+from app.admin.api.graphql.subscriptions import subscribe_chat_message
 from app.admin.api.graphql.types.analytics import AnalyticsType
 from app.admin.api.graphql.types.category import CategoryType
 from app.admin.api.graphql.types.chat import ChatMessageType, ConversationType
@@ -262,6 +265,9 @@ class AdminMutation:
     # ── chat / notifications ─────────────────────────────────
     send_message: ChatMessageType = strawberry.field(resolver=mutate_send_message)
     mark_read: int = strawberry.field(resolver=mutate_mark_read)
+    end_conversation: ConversationType = strawberry.field(
+        resolver=mutate_end_conversation
+    )
     mark_notification_read: NotificationType = strawberry.field(
         resolver=mutate_mark_notification_read
     )
@@ -312,6 +318,13 @@ class AdminMutation:
     upsert_setting: SettingType = strawberry.field(resolver=mutate_upsert_setting)
 
 
+@strawberry.type
+class AdminSubscription:
+    chat_message: AsyncIterator[ChatMessageType] = strawberry.subscription(
+        resolver=subscribe_chat_message,
+    )
+
+
 _log = logging.getLogger(__name__)
 
 
@@ -337,5 +350,6 @@ class _AppErrorExtension(SchemaExtension):
 admin_schema = strawberry.Schema(
     query=AdminQuery,
     mutation=AdminMutation,
+    subscription=AdminSubscription,
     extensions=[_AppErrorExtension],
 )

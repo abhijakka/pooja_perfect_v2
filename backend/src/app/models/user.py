@@ -42,6 +42,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_phone_verified: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column()
     phone_verified_at: Mapped[datetime | None] = mapped_column()
     admin_notes: Mapped[str | None] = mapped_column(String(2000))

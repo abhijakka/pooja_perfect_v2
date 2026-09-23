@@ -12,10 +12,20 @@ if TYPE_CHECKING:
     from .conversation_participant import ConversationParticipant
 
 
+class ConversationStatus:
+    """Lifecycle states for a chat conversation."""
+
+    ACTIVE = "active"
+    ENDED = "ended"
+
+
 class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "conversations"
 
     subject: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(
+        String(16), default=ConversationStatus.ACTIVE, nullable=False
+    )
     participants: Mapped[list[ConversationParticipant]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )

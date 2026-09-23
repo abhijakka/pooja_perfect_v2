@@ -24,7 +24,11 @@ from .cart import (
     mutate_remove_cart_item,
     mutate_update_cart_item,
 )
-from .chat import mutate_send_chat_message
+from .chat import (
+    mutate_end_conversation,
+    mutate_send_chat_message,
+    mutate_start_conversation,
+)
 from .checkout import mutate_checkout
 from .notifications import (
     mutate_mark_all_notifications_read,
@@ -59,6 +63,7 @@ __all__ = [
     "mutate_create_review",
     "mutate_delete_address",
     "mutate_delete_review",
+    "mutate_end_conversation",
     "mutate_google_login",
     "mutate_login",
     "mutate_logout",
@@ -70,6 +75,7 @@ __all__ = [
     "mutate_send_chat_message",
     "mutate_set_default_address",
     "mutate_signup",
+    "mutate_start_conversation",
     "mutate_subscribe",
     "mutate_update_address",
     "mutate_update_cart_item",

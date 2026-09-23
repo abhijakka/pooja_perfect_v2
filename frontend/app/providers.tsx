@@ -13,6 +13,7 @@ import { hydrate as hydrateCart } from "../store/slices/cartSlice";
 import { hydrate as hydrateWishlist } from "../store/slices/wishlistSlice";
 import { setOnline } from "../store/slices/connectionSlice";
 import { SupportChat } from "../components/chat/SupportChat";
+import { ChatProvider } from "../context/ChatContext";
 import { useVisitorTracking } from "../hooks/useVisitorTracking";
 
 /** Pages where a missing/invalid access token is expected — never redirect those to home. */
@@ -123,8 +124,10 @@ export default function Providers({ children }: Readonly<{ children: React.React
 	}, [store]);
 	return (
 		<Provider store={store}>
-			<AuthBootstrap>{children}</AuthBootstrap>
-			<SupportChat />
+			<ChatProvider>
+				<AuthBootstrap>{children}</AuthBootstrap>
+				<SupportChat />
+			</ChatProvider>
 		</Provider>
 	);
 }

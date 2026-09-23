@@ -36,14 +36,17 @@ from app.public.api.graphql.mutations import (
     mutate_send_chat_message,
     mutate_set_default_address,
     mutate_signup,
+    mutate_start_conversation,
     mutate_subscribe,
     mutate_update_address,
     mutate_update_cart_item,
     mutate_update_profile,
     mutate_update_review,
     mutate_update_subscription,
+    mutate_end_conversation,
 )
 from app.public.api.graphql.queries import (
+    resolve_active_conversation,
     resolve_addresses,
     resolve_apply_coupon,
     resolve_cart,
@@ -131,6 +134,9 @@ class PublicQuery:
     )
     conversation: ConversationType = strawberry.field(resolver=resolve_conversation)
     messages: Page[ChatMessageType] = strawberry.field(resolver=resolve_messages)
+    activeConversation: ConversationType | None = strawberry.field(
+        resolver=resolve_active_conversation
+    )
     notifications: Page[NotificationType] = strawberry.field(
         resolver=resolve_notifications
     )
@@ -188,6 +194,12 @@ class PublicMutation:
     delete_review: MutationResult = strawberry.field(resolver=mutate_delete_review)
 
     # ── chat / notifications ─────────────────────────────────
+    start_conversation: ConversationType = strawberry.field(
+        resolver=mutate_start_conversation
+    )
+    end_conversation: ConversationType = strawberry.field(
+        resolver=mutate_end_conversation
+    )
     send_chat_message: ChatMessageType = strawberry.field(
         resolver=mutate_send_chat_message
     )

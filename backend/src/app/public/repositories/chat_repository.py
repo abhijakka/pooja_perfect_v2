@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 
 from app.models.chat_message import ChatMessage
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, ConversationStatus
 from app.models.conversation_participant import ConversationParticipant
 from app.models.enums import MessageType
 from app.schemas.pagination import PaginationInput
@@ -84,22 +84,67 @@ class PublicChatRepository:
         self._db.add(participant)
         return participant
 
-    def get_or_create_support_conversation(self, user_id: uuid.UUID) -> Conversation:
-        """Find an existing conversation with 'support' subject for the user, or create one."""
+    def get_or_create_support_conversation(
+        self, user_id: uuid.UUID, force_new: bool = False
+    ) -> Conversation:
+        """Find the user's ACTIVE support conversation, or create a fresh one.
+
+        When ``force_new`` is True, any existing ACTIVE support conversation is
+        ended first so each chat session has a unique identity.
+        """
         subq = select(ConversationParticipant.conversation_id).where(
             ConversationParticipant.user_id == user_id
         )
         existing = self._db.scalars(
             select(Conversation).where(
                 Conversation.subject == "support",
+                Conversation.status == ConversationStatus.ACTIVE,
                 Conversation.id.in_(subq),
             )
         ).first()
-        if existing is not None:
+        if existing is not None and not force_new:
             return existing
+        if existing is not None:
+            existing.status = ConversationStatus.ENDED
         conversation = self.create_conversation(subject="support")
         self.add_participant(conversation.id, user_id, "customer")
         return conversation
+
+    def active_support_conversation(self, user_id: uuid.UUID) -> Conversation | None:
+        """Return the user's ACTIVE support conversation, if any."""
+        subq = select(ConversationParticipant.conversation_id).where(
+            ConversationParticipant.user_id == user_id
+        )
+        return self._db.scalars(
+            select(Conversation).where(
+                Conversation.subject == "support",
+                Conversation.status == ConversationStatus.ACTIVE,
+                Conversation.id.in_(subq),
+            )
+        ).first()
+
+    def end_conversation(self, conversation: Conversation) -> Conversation:
+        """Mark the conversation as ended."""
+        conversation.status = ConversationStatus.ENDED
+        self._db.flush()
+        return conversation
+
+    def latest_message(self, conversation_id: uuid.UUID) -> ChatMessage | None:
+        return self._db.scalars(
+            select(ChatMessage)
+            .where(ChatMessage.conversation_id == conversation_id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(1)
+        ).first()
+
+    def unread_count(self, conversation_id: uuid.UUID, reader_id: uuid.UUID) -> int:
+        return self._db.scalar(
+            select(func.count(ChatMessage.id)).where(
+                ChatMessage.conversation_id == conversation_id,
+                ChatMessage.is_read.is_(False),
+                ChatMessage.sender_id != reader_id,
+            )
+        ) or 0
 
     # ── messages ─────────────────────────────────────────────
 

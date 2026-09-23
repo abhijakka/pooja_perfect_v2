@@ -16,6 +16,7 @@ class ChatMessageType:
     message_type: str
     content: str
     is_read: bool = False
+    mine: bool = False
     created_at: datetime | None = None
 
 
@@ -23,5 +24,6 @@ class ChatMessageType:
 class ConversationType:
     id: UUID
     subject: str | None = None
+    status: str = "active"
     created_at: datetime | None = None
     updated_at: datetime | None = None
