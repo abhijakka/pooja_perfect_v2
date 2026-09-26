@@ -3,7 +3,15 @@
 import os
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Origins the API accepts browser calls from when nothing is configured: the two
+# loopback dev hosts plus a LAN address, so a phone on the same Wi-Fi can sign in
+# during development. CORS_ALLOW_ORIGINS overrides this for other hosts.
+DEFAULT_CORS_ALLOW_ORIGINS = (
+    "http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.34:3000"
+)
 
 
 class Settings(BaseSettings):
@@ -27,6 +35,36 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
+
+    # ── CORS ──────────────────────────────────────────────────
+    # Comma-separated origins allowed to call this API from a browser. The auth
+    # cookies are sent with credentials, so every origin that needs to sign in
+    # has to be listed here; a wildcard is rejected outright.
+    cors_allow_origins: str = DEFAULT_CORS_ALLOW_ORIGINS
+
+    @field_validator("cors_allow_origins")
+    @classmethod
+    def _reject_wildcard_origin(cls, value: str) -> str:
+        # This API authenticates with cookies, and CORS mirrors the caller's
+        # origin when credentials are allowed — so "*" would hand every site on
+        # the internet an authenticated session. Fail at startup instead.
+        if "*" in value:
+            raise ValueError(
+                "CORS_ALLOW_ORIGINS cannot contain '*': the API sends credentialed "
+                "cookies, so list each allowed origin explicitly"
+            )
+        return value
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """`cors_allow_origins` split and normalized for CORSMiddleware.
+
+        Trims stray whitespace, drops empty entries from trailing commas, and
+        strips trailing slashes, which browsers never send and which would
+        otherwise silently fail to match.
+        """
+        origins = (origin.strip() for origin in self.cors_allow_origins.split(","))
+        return [normalized for origin in origins if (normalized := origin.rstrip("/"))]
 
     # ── Google OAuth ──────────────────────────────────────────
     google_client_id: str = ""

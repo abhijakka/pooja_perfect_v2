@@ -8,6 +8,7 @@ from app.admin.context import get_admin_context
 from app.api.auth import router as auth_router
 from app.api.tracking import router as tracking_router
 from app.api.webhooks.payment import router as payment_webhook_router
+from app.config import settings
 from app.core.exceptions import AppError
 from app.db import check_db_health
 from app.middleware.activity_log import ActivityLogMiddleware
@@ -18,11 +19,10 @@ from app.public.context import get_public_context
 app = FastAPI(title="PoojaPoint", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://192.168.1.34:3000",
-    ],
+    # Configured via CORS_ALLOW_ORIGINS so a new dev host or LAN address can be
+    # added without editing code. Credentials are on because auth is cookie
+    # based, so a wildcard origin is not permitted (see Settings.cors_allow_origins).
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

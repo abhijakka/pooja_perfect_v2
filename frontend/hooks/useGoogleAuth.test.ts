@@ -59,6 +59,13 @@ describe("useGoogleAuth", () => {
 		meMock.mockResolvedValue(me());
 	});
 
+	// A dismissal is only reported after its grace window, so one test needs
+	// fake timers. Restore them even if that test throws, or every later hook
+	// is left with a null `result.current`.
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
 	it("authenticates with the same session the password path produces", async () => {
 		const google = stubGoogle();
 		const onError = jest.fn();
@@ -162,10 +169,9 @@ describe("useGoogleAuth", () => {
 		let user: unknown = "untouched";
 		await act(async () => {
 			const attempt = result.current.signInWithGoogle();
-			jest.advanceTimersByTime(5000);
+			await jest.advanceTimersByTimeAsync(5000);
 			user = await attempt;
 		});
-		jest.useRealTimers();
 
 		expect(user).toBeNull();
 		expect(onError).toHaveBeenCalledWith("Google sign in was cancelled.");
