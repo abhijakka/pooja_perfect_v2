@@ -27,13 +27,24 @@ def _to_message_type(m: Any, user: Any | None = None) -> ChatMessageType:
     )
 
 
-async def subscribe_chat_message(
-    self, info: Info, conversation_id: uuid.UUID
+async def _iter_chat_messages(
+    conversation_id: uuid.UUID, user: Any
 ) -> AsyncIterator[ChatMessageType]:
-    ctx: PublicContext = info.context
-    user = require_user_or_guest(ctx)
-    # Verify the user is a participant before subscribing.
-    svc = ChatService(ctx.db)
-    svc.get_conversation(user, conversation_id)
     async for message in pubsub.subscribe(chat_topic(conversation_id)):
         yield _to_message_type(message, user)
+
+
+def subscribe_chat_message(
+    self, info: Info, conversation_id: uuid.UUID
+) -> AsyncIterator[ChatMessageType]:
+    """Authorize synchronously, then stream.
+
+    Returning a plain (non-generator) function makes the participant check run while the
+    ``subscribe`` message is being handled, so a caller who is not a participant is rejected
+    on the socket instead of being handed a subscription that silently never delivers.
+    """
+    ctx: PublicContext = info.context
+    user = require_user_or_guest(ctx)
+    svc = ChatService(ctx.db)
+    svc.get_conversation(user, conversation_id)
+    return _iter_chat_messages(conversation_id, user)

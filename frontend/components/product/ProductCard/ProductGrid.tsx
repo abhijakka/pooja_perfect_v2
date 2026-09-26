@@ -5,7 +5,7 @@ import type { MouseEvent } from "react";
 export type StoreProduct = {
   id: string;
   name: string;
-  category: "pooja" | "idols" | "decor" | "gifting";
+  category: string;
   categoryLabel: string;
   price: number;
   oldPrice: number;

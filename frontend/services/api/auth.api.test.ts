@@ -68,4 +68,9 @@ describe("authApi", () => {
 			credentials: "include",
 		});
 	});
+
+	it("reads the public google client id from the backend", () => {
+		authApi.googleConfig();
+		expect(apiClientMock).toHaveBeenCalledWith("/auth/google/config", { method: "GET" });
+	});
 });

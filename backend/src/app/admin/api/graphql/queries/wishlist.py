@@ -25,6 +25,7 @@ class TopWishlistProductType:
     product_id: str
     product_name: str
     wishlist_count: int
+    price: str | None = None
 
 
 def resolve_wishlist_overview(self, info: Info) -> WishlistOverviewType:
@@ -47,7 +48,8 @@ def resolve_top_wishlist_products(
         TopWishlistProductType(
             product_id=str(row.get("product_id", "")),
             product_name=str(row.get("product_name", "")),
-            wishlist_count=int(row.get("wishlist_count", 0)),
+            wishlist_count=int(row.get("count", 0)),
+            price=str(row["price"]) if row.get("price") is not None else None,
         )
         for row in rows
     ]

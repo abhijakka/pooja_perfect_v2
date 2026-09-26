@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import OrdersPage from "./page";
 
-jest.mock("../../../services/api/account.api", () => ({ accountApi: { getOverview: () => Promise.resolve({ current_user: {}, addresses: [], orders: { items: [{ id: "1", order_number: "PP-BACKEND-001", status: "processing", total: 100, created_at: "2026-08-19T00:00:00Z", items: [{ product_id: "1", product_name: "Backend Diya", quantity: 1, unit_price: 100 }] }] } }) } }));
+jest.mock("../../../services/api/account.api", () => ({ accountApi: { getOverview: () => Promise.resolve({ currentUser: {}, addresses: [], orders: { items: [{ id: "1", orderNumber: "PP-BACKEND-001", status: "processing", total: 100, createdAt: "2026-08-19T00:00:00Z", items: [{ productId: "1", productName: "Backend Diya", quantity: 1, unitPrice: 100 }] }] } }) } }));
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("../../../hooks/useCart", () => ({ useCart: () => ({ count: 0, addItem: jest.fn() }) }));

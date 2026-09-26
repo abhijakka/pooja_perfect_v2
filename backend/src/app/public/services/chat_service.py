@@ -49,36 +49,43 @@ class ChatService:
         return conversation
 
     def set_guest_identity(self, user: User, name: str, email: str) -> User:
-        """Persist the guest-provided name/email on the guest user.
+        """Persist the guest-provided name/email on the guest's own user row.
 
-        If the email belongs to an existing registered user, return that user's
-        details instead of updating the guest user, and transfer any existing
-        guest conversations to the existing user.
+        The returned user is always the *caller's own* row. An anonymous caller
+        never gains access to — and a registered account is never handed over
+        to — an identity that is only claimed by an unverified email string.
+
+        The email is a self-declared contact detail, nothing more. If it happens
+        to match an existing account, the guest keeps their own conversation and
+        the registered account is left completely untouched: it is neither merged
+        into nor made a participant of this conversation. Linking the two would
+        require proving control of the mailbox, which this project has no
+        verification flow for.
         """
-        from app.public.repositories.user_repository import UserRepository
-
         name = (name or "").strip()
         email = (email or "").strip()
         if not validate_guest_identity(name, email):
             raise ValidationError("A valid name and email are required to start a chat")
 
-        # Check if email is already in use by another user
-        users = UserRepository(self._db)
-        existing_user = users.get_by_email(email)
+        # A guest may only ever rename their own row. If the email is already
+        # taken, the unique index on users.email would reject the write, so keep
+        # the guest's generated address and record the supplied one on the row
+        # only when it is genuinely free.
+        from app.public.repositories.user_repository import UserRepository
+
+        existing_user = UserRepository(self._db).get_by_email(email)
         if existing_user is not None and existing_user.id != user.id:
-            # Email belongs to an existing registered user
-            # Transfer any active guest conversations to the existing user
-            guest_conversation = self._repo.active_support_conversation(user.id)
-            if guest_conversation is not None:
-                # Add existing user as participant to the guest's conversation
-                if not self._repo.is_participant(guest_conversation.id, existing_user.id):
-                    self._repo.add_participant(guest_conversation.id, existing_user.id, "customer")
-                self._db.commit()
-            # Return the existing user's details so chat continues with their account
-            return existing_user
+            # Self-declared email collides with a real account. Keep the guest's
+            # own generated address so the unique constraint holds and no
+            # account is impersonated or overwritten.
+            user.first_name = name
+            user.last_name = ""
+            self._db.commit()
+            self._db.refresh(user)
+            return user
 
         user.first_name = name
-        user.last_name = name
+        user.last_name = ""
         user.email = email
         self._db.commit()
         self._db.refresh(user)

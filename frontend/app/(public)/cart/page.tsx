@@ -101,19 +101,20 @@ export default function CartPage() {
       <div className="cart-grid">
         <section className="cart-card"><div className="cart-card-header"><h2>Shopping Cart (<span>{count}</span>)</h2><button className="select-all" onClick={confirmClear}>Clear Cart</button></div><div className={`cart-items ${!items.length ? "cart-items-empty" : ""}`}>{items.map((item) => {
                 const payGo = item.categoryLabel === "Pay As You Go";
+                const productHref = item.slug ? `/products/${item.slug}` : null;
+                const discountBadge = <span className="discount-badge">{Math.round((1 - item.price / item.oldPrice) * 100)}% OFF</span>;
                 return (
                   <article className={`cart-item ${payGo ? "paygo-item" : ""}`} key={item.id}>
-                    <Link href={payGo ? "#" : `/products/${item.slug}`} className="product-image">
-                      {payGo ? (
-                        <span className="discount-badge paygo-badge">PAYGO</span>
-                      ) : (
-                        <span className="discount-badge">{Math.round((1 - item.price / item.oldPrice) * 100)}% OFF</span>
-                      )}
-                      <img src={item.image} alt={item.name} />
-                    </Link>
+                    {payGo ? (
+                      <span className="product-image"><span className="discount-badge paygo-badge">PAYGO</span></span>
+                    ) : productHref ? (
+                      <Link href={productHref} className="product-image">{discountBadge}<img src={item.image} alt={item.name} /></Link>
+                    ) : (
+                      <span className="product-image">{discountBadge}<img src={item.image} alt={item.name} /></span>
+                    )}
                     <div className="product-info">
                       <div className="product-category">{payGo ? "Pay As You Go" : item.categoryLabel}</div>
-                      <Link href={payGo ? "#" : `/products/${item.slug}`}><h3 className="product-name">{item.name}</h3></Link>
+                      {payGo || !productHref ? <h3 className="product-name">{item.name}</h3> : <Link href={productHref}><h3 className="product-name">{item.name}</h3></Link>}
                       {payGo ? (
                         <p className="product-description">Custom pack · {item.category} · {money(item.price)} per delivery</p>
                       ) : (

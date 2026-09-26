@@ -29,6 +29,7 @@ query {
     productId
     productName
     wishlistCount
+    price
   }
 }
 """
@@ -74,4 +75,9 @@ def test_top_wishlist_products(client: TestClient) -> None:
 
     result = gql(client, TOP_QUERY, headers=admin_headers())
     assert "errors" not in result, result
-    assert result["data"]["topWishlistProducts"][0]["productName"] == "Incense"
+    top = result["data"]["topWishlistProducts"][0]
+    assert top["productName"] == "Incense"
+    # The frontend renders a Price column and derives potential revenue from price x count,
+    # so both must survive the resolver rather than silently defaulting.
+    assert top["wishlistCount"] == 1
+    assert float(top["price"]) == 100.0

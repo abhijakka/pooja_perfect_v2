@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token
@@ -110,6 +110,46 @@ def _conversation_owner(conversation_id: str) -> User | None:
         session.close()
 
 
+def _participant_user_ids(conversation_id: str) -> set[uuid.UUID]:
+    """Every user_id attached to a conversation, read fresh from the DB."""
+    session: Session = TestingSessionLocal()
+    try:
+        rows = session.scalars(
+            select(ConversationParticipant.user_id).where(
+                ConversationParticipant.conversation_id == uuid.UUID(conversation_id)
+            )
+        ).all()
+        return set(rows)
+    finally:
+        session.close()
+
+
+def _user_row_by_email(email: str) -> dict | None:
+    """Plain-dict snapshot of a user row, safe to use after the session closes."""
+    session: Session = TestingSessionLocal()
+    try:
+        user = session.scalar(select(User).where(User.email == email))
+        if user is None:
+            return None
+        return {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "is_guest": user.is_guest,
+        }
+    finally:
+        session.close()
+
+
+def _user_count() -> int:
+    session: Session = TestingSessionLocal()
+    try:
+        return int(session.scalar(select(func.count()).select_from(User)) or 0)
+    finally:
+        session.close()
+
+
 def test_list_conversations(client: TestClient) -> None:
     user = create_user()
     _create_conversation(user)
@@ -184,8 +224,9 @@ def test_guest_force_new_creates_fresh_conversation(client: TestClient) -> None:
 
 
 def test_existing_email_creates_new_conversation(client: TestClient) -> None:
-    """When a guest submits an email that already exists for another user,
-    a NEW conversation must be created — old chat history must NOT be loaded."""
+    """A guest typing an email that already belongs to a registered user must
+    stay an anonymous guest: they get their own fresh conversation, and the
+    registered account is neither read, joined, nor rewritten."""
     # First, create an existing user with a known email
     existing_user = create_user(email="ravi@gmail.com")
 
@@ -226,6 +267,100 @@ def test_existing_email_creates_new_conversation(client: TestClient) -> None:
     )
     assert "errors" not in messages, messages
     assert messages["data"]["messages"]["pagination"]["total"] == 0
+
+    # F7: the registered account must NOT be pulled into the impostor's
+    # conversation, and the impostor must not be joined to the victim's.
+    new_conv_participants = _participant_user_ids(new_conv_id)
+    assert len(new_conv_participants) == 1, "guest conversation gained a second participant"
+    assert existing_user.id not in new_conv_participants
+    assert _participant_user_ids(existing_conv_id) == {existing_user.id}
+
+    # The impostor cannot read the victim's conversation...
+    assert "errors" in public_gql(
+        client, CONVERSATION, variables={"id": existing_conv_id}
+    )
+    # ...and cannot post into it.
+    assert "errors" in public_gql(
+        client, SEND, variables={"conversationId": existing_conv_id, "content": "Peek"}
+    )
+
+    # The victim's own conversation is untouched and still readable by them.
+    victim_view = public_gql(
+        client, CONVERSATION, variables={"id": existing_conv_id}, headers=_headers(existing_user)
+    )
+    assert "errors" not in victim_view, victim_view
+    assert victim_view["data"]["conversation"]["status"] == "active"
+    victim_messages = public_gql(
+        client,
+        MESSAGES_QUERY,
+        variables={"conversationId": existing_conv_id},
+        headers=_headers(existing_user),
+    )
+    assert victim_messages["data"]["messages"]["pagination"]["total"] == 0
+
+
+def test_guest_claiming_registered_email_never_writes_that_email(client: TestClient) -> None:
+    """The self-declared email is unverified, so the guest keeps their own
+    generated address. The unique index on users.email must still hold and the
+    registered row must be left completely alone."""
+    existing_user = create_user(email="victim@example.com")
+    before = _user_row_by_email("victim@example.com")
+    assert before is not None
+
+    public_gql(client, START, variables={"name": "Mallory", "email": "victim@example.com"})
+
+    # Still resolves to the same registered account, with the same values.
+    after = _user_row_by_email("victim@example.com")
+    assert after == before
+    assert after is not None and after["id"] == existing_user.id
+
+    # The impostor's own row is a separate guest that never claimed the address.
+    owner = _conversation_owner(
+        public_gql(client, ACTIVE)["data"]["activeConversation"]["id"]
+    )
+    assert owner is not None
+    guest_row = _user_row_by_email(owner.email)
+    assert guest_row is not None
+    assert guest_row["id"] != existing_user.id
+    assert guest_row["first_name"] == "Mallory"
+
+
+def test_guest_identity_does_not_duplicate_the_name(client: TestClient) -> None:
+    """F8: a guest's display name is stored once, not mirrored into last_name."""
+    result = public_gql(
+        client, START, variables={"name": "Priya", "email": "priya@example.com"}
+    )
+    assert "errors" not in result, result
+    owner = _conversation_owner(result["data"]["startConversation"]["id"])
+    assert owner is not None
+    assert owner.first_name == "Priya"
+    assert owner.last_name in (None, ""), f"name was duplicated: {owner.last_name!r}"
+
+
+def test_read_only_queries_do_not_mint_a_guest_user(client: TestClient) -> None:
+    """F9: a browser with no chat history yet must not get a users row written
+    just because it polled the chat queries."""
+    before = _user_count()
+
+    listed = public_gql(client, CONVERSATIONS_QUERY)
+    assert "errors" not in listed, listed
+    assert listed["data"]["conversations"]["pagination"]["total"] == 0
+
+    active = public_gql(client, ACTIVE)
+    assert "errors" not in active, active
+    assert active["data"]["activeConversation"] is None
+
+    detail = public_gql(client, CONVERSATION, variables={"id": str(uuid.uuid4())})
+    assert "errors" in detail
+
+    assert _user_count() == before, "read-only chat queries created a user row"
+
+    # Writing still mints exactly one guest, and it is then reused.
+    public_gql(client, START, variables={"name": "Priya", "email": "priya@example.com"})
+    after_first_write = _user_count()
+    assert after_first_write == before + 1
+    public_gql(client, ACTIVE)
+    assert _user_count() == after_first_write
 
 
 def test_guest_send_and_list_messages(client: TestClient) -> None:

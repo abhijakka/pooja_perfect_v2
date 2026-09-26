@@ -6,10 +6,6 @@ import { usePathname } from "next/navigation";
 jest.mock("../../hooks/useChat", () => ({ useChat: jest.fn() }));
 jest.mock("next/navigation", () => ({ usePathname: jest.fn() }));
 
-beforeAll(() => {
-  Element.prototype.scrollTo = jest.fn();
-});
-
 const mockUseChat = useChat as jest.Mock;
 const mockUsePathname = usePathname as jest.Mock;
 
@@ -72,9 +68,26 @@ describe("SupportChat", () => {
     });
     render(<SupportChat />);
     expect(screen.getByText(/May I know your name\?/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Ravi" } });
+    fireEvent.change(screen.getByLabelText("Enter your name"), { target: { value: "Ravi" } });
     fireEvent.click(screen.getByLabelText("Submit name"));
     expect(baseChat.submitGuestName).toHaveBeenCalledWith("Ravi");
+  });
+
+  it("collects the guest email before starting the conversation", () => {
+    mockUseChat.mockReturnValue({
+      ...baseChat,
+      open: true,
+      conversationId: null,
+      guestName: "Ravi",
+      guestStep: "email",
+    });
+    render(<SupportChat />);
+    expect(screen.getByText(/What is your email address\?/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Enter your email address"), {
+      target: { value: "ravi@example.com" },
+    });
+    fireEvent.click(screen.getByLabelText("Submit email"));
+    expect(baseChat.submitGuestEmail).toHaveBeenCalledWith("ravi@example.com");
   });
 
   it("shows the ended state and disables the composer", () => {

@@ -6,6 +6,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from app.core.exceptions import NotFoundError, ValidationError
+from app.models.cart_item import CartItem
 from app.models.enums import ProductStatus
 from app.models.user import User
 from app.public.repositories.cart_repository import PublicCartRepository
@@ -28,6 +29,55 @@ class CartService:
             self._db.commit()
             self._db.refresh(cart)
         return cart
+
+    def merge_guest_cart(self, user: User, guest_token_hash: str | None) -> bool:
+        """Hand this browser's guest cart over to ``user`` when they sign in.
+
+        A guest cart is keyed by the ``guest_token`` cookie, an authenticated cart by
+        ``carts.user_id``, and both columns are UNIQUE, so exactly one row can hold either
+        identity. When the customer has no cart yet the guest cart is adopted in place;
+        otherwise its lines are folded into the customer cart by (product, variant) and the
+        guest cart is dropped.
+
+        ``guest_token_hash`` is cleared on adoption. Leaving it would let whoever still
+        holds that cookie resolve to the signed-in customer's cart.
+
+        Idempotent: a cart that is already the user's, an absent cookie and an unknown
+        cookie are all no-ops. ``refresh`` must not call this — it is not a new sign-in.
+        """
+        if not guest_token_hash:
+            return False
+
+        guest_cart = self._cart_repo.get_by_guest_token_hash(guest_token_hash)
+        if guest_cart is None or guest_cart.user_id == user.id:
+            return False
+
+        target = self._cart_repo.get_by_user(user.id)
+        if target is None:
+            guest_cart.user_id = user.id
+            guest_cart.guest_token_hash = None
+            self._db.commit()
+            return True
+
+        for item in list(guest_cart.items):
+            existing = self._cart_repo.get_item_by_product(
+                target.id, item.product_id, item.variant_id
+            )
+            if existing is not None:
+                existing.quantity += item.quantity
+            else:
+                self._db.add(
+                    CartItem(
+                        cart_id=target.id,
+                        product_id=item.product_id,
+                        variant_id=item.variant_id,
+                        quantity=item.quantity,
+                        unit_price=item.unit_price,
+                    )
+                )
+        self._db.delete(guest_cart)
+        self._db.commit()
+        return True
 
     def add_item(
         self,

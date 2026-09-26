@@ -9,20 +9,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.exceptions import InvalidTokenError
 from app.core.security import decode_token
 from app.db import get_db
-from app.dependencies.auth import get_current_active_user
+from app.dependencies.auth import get_access_token, get_current_active_user
 from app.models.user import User
 from app.public.services.auth_service import AuthService
 from app.schemas.auth import (
     LoginInput,
     MeResponse,
     OAuthLoginInput,
+    OAuthProviderConfigResponse,
     RefreshTokenInput,
     SignupInput,
     TokenResponse,
@@ -30,6 +31,8 @@ from app.schemas.auth import (
 from app.schemas.user import UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+REFRESH_TOKEN_COOKIE = "refresh_token"
 
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
@@ -57,17 +60,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
 
 def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
-
-
-def _extract_access_token(request: Request) -> str | None:
-    token_value = request.cookies.get("access_token")
-    if token_value:
-        return token_value
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.lower().startswith("bearer "):
-        return auth_header.split(" ", 1)[1].strip()
-    return None
+    response.delete_cookie(REFRESH_TOKEN_COOKIE, path="/")
 
 
 @router.post(
@@ -85,22 +78,26 @@ def register(
 @router.post("/login", response_model=TokenResponse)
 def login(
     data: LoginInput,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     response: Response,
 ) -> TokenResponse:
-    tokens = AuthService(db).login(data)
+    svc = AuthService(db)
+    # A guest cart is keyed by this cookie; hand it to the customer signing in.
+    svc.bind_guest_cart(request.cookies.get("guest_token"))
+    tokens = svc.login(data)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens
 
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(
+    request: Request,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
-    data: RefreshTokenInput | None = None,
-    request: Request = None,
-    response: Response = None,
+    data: Annotated[RefreshTokenInput | None, Body()] = None,
 ) -> TokenResponse:
-    token_value = (data.refresh_token if data is not None else None) or request.cookies.get("refresh_token")
+    token_value = (data.refresh_token if data is not None else None) or request.cookies.get(REFRESH_TOKEN_COOKIE)
     if not token_value:
         raise InvalidTokenError()
     tokens = AuthService(db).refresh(token_value)
@@ -110,37 +107,53 @@ def refresh(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
-    data: RefreshTokenInput | None = None,
-    request: Request = None,
-    response: Response = None,
+    data: Annotated[RefreshTokenInput | None, Body()] = None,
 ) -> Response:
-    token_value = (data.refresh_token if data is not None else None) or request.cookies.get("refresh_token")
+    token_value = (data.refresh_token if data is not None else None) or request.cookies.get(REFRESH_TOKEN_COOKIE)
     if token_value:
         AuthService(db).logout(token_value)
-    _clear_auth_cookies(response)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    # The returned Response replaces the injected one, so the deletions must land on it.
+    deleted = Response(status_code=status.HTTP_204_NO_CONTENT)
+    _clear_auth_cookies(deleted)
+    return deleted
 
 
 @router.get("/me", response_model=MeResponse)
 def me(
-    request: Request,
+    access_token: Annotated[str, Depends(get_access_token)],
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> MeResponse:
-    token_value = _extract_access_token(request)
-    payload = decode_token(token_value, settings.jwt_secret_key, "access")
+    payload = decode_token(access_token, settings.jwt_secret_key, "access")
     return MeResponse(
         **UserResponse.model_validate(current_user).model_dump(),
         expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
     )
 
 
+@router.get("/google/config", response_model=OAuthProviderConfigResponse)
+def google_config() -> OAuthProviderConfigResponse:
+    """Publish the public Google client id the browser needs to start sign-in.
+
+    The backend already owns ``GOOGLE_CLIENT_ID`` and verifies the returned
+    ``id_token`` against that exact value, so serving it from here keeps one
+    source of truth instead of duplicating the credential in a second config.
+    Only the public id is exposed; the client secret is never part of the
+    response and is not read by any code path.
+    """
+    return OAuthProviderConfigResponse(client_id=settings.google_client_id)
+
+
 @router.post("/google", response_model=TokenResponse)
 def google_login(
     data: OAuthLoginInput,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     response: Response,
 ) -> TokenResponse:
-    tokens = AuthService(db).google_login(data)
+    svc = AuthService(db)
+    svc.bind_guest_cart(request.cookies.get("guest_token"))
+    tokens = svc.google_login(data)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens

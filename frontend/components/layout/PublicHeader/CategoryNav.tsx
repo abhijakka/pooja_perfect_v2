@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAppDispatch } from "../../../store/hooks";
 import { setOnline } from "../../../store/slices/connectionSlice";
 import { categoriesApi, type CategoryDto } from "../../../services/api/categories.api";
+import { useAuth } from "../../../hooks/useAuth";
 
 const fallbackCategories = [
   { label: "Home", href: "/" },
@@ -19,6 +21,12 @@ const fallbackCategories = [
   { label: "Track Order", href: "/order/track" },
 ] as const;
 
+/** Account navigation is customer-only and must never appear for guests or admins. */
+const accountLinks = [
+  { label: "My Account", href: "/my-account" },
+  { label: "My Orders", href: "/my-orders" },
+] as const;
+
 function toNavItem(category: CategoryDto) {
   const slug = category.slug || category.name.toLowerCase().replace(/\s+/g, "-");
   return { label: category.name, href: `/products?category=${encodeURIComponent(slug)}` };
@@ -26,7 +34,9 @@ function toNavItem(category: CategoryDto) {
 
 export function CategoryNav() {
   const dispatch = useAppDispatch();
+  const { user, isAuthenticated } = useAuth();
   const [categories, setCategories] = useState<typeof fallbackCategories>(fallbackCategories);
+  const isCustomer = isAuthenticated && user?.role_name === "customer";
 
   useEffect(() => {
     let active = true;
@@ -49,10 +59,16 @@ export function CategoryNav() {
   return (
     <nav className="category-nav" aria-label="Categories">
       {categories.map((item) => (
-        <a href={item.href} key={item.label}>
+        <Link href={item.href} key={item.label}>
           {item.label}
-        </a>
+        </Link>
       ))}
+      {isCustomer &&
+        accountLinks.map((item) => (
+          <Link href={item.href} key={item.label}>
+            {item.label}
+          </Link>
+        ))}
     </nav>
   );
 }

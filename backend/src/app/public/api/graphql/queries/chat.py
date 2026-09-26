@@ -7,9 +7,10 @@ from typing import Any
 
 from strawberry.types import Info
 
+from app.core.exceptions import PermissionDeniedError
 from app.public.api.graphql.types.chat import ChatMessageType, ConversationType
 from app.public.api.graphql.types.common import Page, build_pagination_info
-from app.public.context import PublicContext, require_user_or_guest
+from app.public.context import PublicContext, optional_user_or_guest
 from app.public.services.chat_service import ChatService
 from app.schemas.pagination import PaginationInput
 
@@ -39,9 +40,14 @@ def _to_message_type(m: Any, user: Any | None = None) -> ChatMessageType:
 
 def resolve_conversations(self, info: Info, page: int = 1, page_size: int = 20) -> Page[ConversationType]:
     ctx: PublicContext = info.context
-    user = require_user_or_guest(ctx)
+    # Read-only: a caller with no guest token simply has no conversations, and
+    # must not cause a guest user row to be written on every poll.
+    user = optional_user_or_guest(ctx)
+    pagination = PaginationInput(page=page, page_size=page_size)
+    if user is None:
+        return Page(items=[], pagination=build_pagination_info(page, page_size, 0))
     svc = ChatService(ctx.db)
-    conversations, total = svc.conversations(user, PaginationInput(page=page, page_size=page_size))
+    conversations, total = svc.conversations(user, pagination)
     return Page(
         items=[_to_conversation_type(c) for c in conversations],
         pagination=build_pagination_info(page, page_size, total),
@@ -50,7 +56,9 @@ def resolve_conversations(self, info: Info, page: int = 1, page_size: int = 20) 
 
 def resolve_active_conversation(self, info: Info) -> ConversationType | None:
     ctx: PublicContext = info.context
-    user = require_user_or_guest(ctx)
+    user = optional_user_or_guest(ctx)
+    if user is None:
+        return None
     svc = ChatService(ctx.db)
     conversation = svc.active_conversation(user)
     if conversation is None:
@@ -60,7 +68,12 @@ def resolve_active_conversation(self, info: Info) -> ConversationType | None:
 
 def resolve_conversation(self, info: Info, id: uuid.UUID) -> ConversationType:
     ctx: PublicContext = info.context
-    user = require_user_or_guest(ctx)
+    # A guest holding a valid guest token may read their own conversation, but a
+    # caller with no resolvable identity owns nothing and must not be handed a
+    # freshly minted user just to fail the participant check.
+    user = optional_user_or_guest(ctx)
+    if user is None:
+        raise PermissionDeniedError("Authentication required")
     svc = ChatService(ctx.db)
     return _to_conversation_type(svc.get_conversation(user, id))
 
@@ -69,11 +82,12 @@ def resolve_messages(
     self, info: Info, conversation_id: uuid.UUID, page: int = 1, page_size: int = 20
 ) -> Page[ChatMessageType]:
     ctx: PublicContext = info.context
-    user = require_user_or_guest(ctx)
+    user = optional_user_or_guest(ctx)
+    pagination = PaginationInput(page=page, page_size=page_size)
+    if user is None:
+        return Page(items=[], pagination=build_pagination_info(page, page_size, 0))
     svc = ChatService(ctx.db)
-    messages, total = svc.messages(
-        user, conversation_id, PaginationInput(page=page, page_size=page_size)
-    )
+    messages, total = svc.messages(user, conversation_id, pagination)
     return Page(
         items=[_to_message_type(m, user) for m in messages],
         pagination=build_pagination_info(page, page_size, total),

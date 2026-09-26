@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -26,6 +27,7 @@ from app.integrations.google.oauth import GoogleUserInfo, verify_google_id_token
 from app.models.user import User, UserStatus
 from app.public.repositories.token_repository import RefreshTokenRepository
 from app.public.repositories.user_repository import UserRepository
+from app.public.services.cart_service import CartService
 from app.schemas.auth import (
     LoginInput,
     OAuthLoginInput,
@@ -48,6 +50,15 @@ class AuthService:
         self._db = db
         self._users = UserRepository(db)
         self._tokens = RefreshTokenRepository(db)
+        self._guest_token_hash: str | None = None
+
+    def bind_guest_cart(self, guest_token: str | None) -> None:
+        """Record this browser's guest cart so the next issued session can adopt it.
+
+        Called by the sign-in entry points, which are the only ones that can read the
+        ``guest_token`` cookie. ``None`` simply disables the hand-over.
+        """
+        self._guest_token_hash = hash_token(guest_token) if guest_token else None
 
     # ── register ──────────────────────────────────────────────
 
@@ -97,6 +108,8 @@ class AuthService:
         # Rotate: revoke old, issue new pair
         self._tokens.revoke(stored)
         self._db.commit()
+        # A refresh continues an existing session, so the guest cart must stay behind.
+        self._guest_token_hash = None
         return self._issue_tokens(user)
 
     # ── logout ────────────────────────────────────────────────
@@ -134,6 +147,14 @@ class AuthService:
         )
         self._db.commit()
 
+        if self._guest_token_hash is not None:
+            # Never let a hand-over failure block an otherwise valid sign-in.
+            try:
+                CartService(self._db).merge_guest_cart(user, self._guest_token_hash)
+            except SQLAlchemyError:
+                self._db.rollback()
+            self._guest_token_hash = None
+
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -145,17 +166,22 @@ class AuthService:
         # 1. Existing OAuth account?
         account = self._users.get_oauth_account("google", info.sub)
         if account is not None:
-            return self._users.get_by_id(account.user_id)  # type: ignore[return-value]
+            linked = self._users.get_by_id(account.user_id)
+            if linked is not None:
+                return linked
+            # Dangling link (user deleted) — fall through and re-resolve below.
 
         # 2. Existing user by email?
         user = self._users.get_by_email(info.email)
         if user is not None:
-            self._users.add_oauth_account(user.id, "google", info.sub)
+            self._link_google_identity(user, info)
             return user
 
-        # 3. New user
+        # 3. New user. The email is normalised here too, not only in the id_token
+        #    verifier, so a row can never be written in a case that get_by_email
+        #    would not match later.
         user = self._users.create(
-            email=info.email,
+            email=info.email.lower().strip(),
             first_name=info.given_name or info.name or "",
             last_name=info.family_name or "",
             google_id=info.sub,
@@ -166,3 +192,16 @@ class AuthService:
         self._db.flush()  # ensure user.id is populated
         self._users.add_oauth_account(user.id, "google", info.sub)
         return user
+
+    def _link_google_identity(self, user: User, info: GoogleUserInfo) -> None:
+        """Attach the Google identity to an existing account.
+
+        The ``oauth_accounts`` row is the lookup key for future sign-ins, so it is
+        always written. ``users.google_id`` is the denormalised copy kept in sync
+        so both stores describe the same link; it is only filled when free, since
+        the column is unique and a stale row may already hold the subject.
+        No other field of the existing account is touched.
+        """
+        self._users.add_oauth_account(user.id, "google", info.sub)
+        if user.google_id is None and self._users.get_by_google_id(info.sub) is None:
+            user.google_id = info.sub

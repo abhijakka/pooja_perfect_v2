@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdminHeader } from "./AdminHeader";
 import { AdminIcon, AdminIconSprite } from "./AdminIcon";
 import { AdminSidebar } from "./AdminSidebar";
@@ -65,6 +65,11 @@ export function AdminChatPage() {
 		window.setTimeout(() => setToast(""), 2200);
 	}, []);
 
+	// An optimistic row is replaced by the server row once the send resolves, so its id only
+	// has to be unique among rows still in flight. A ref counter keeps that guarantee without
+	// reading a clock, which would make render impure.
+	const pendingId = useRef(0);
+
 	const refreshConversations = useCallback(
 		async (keepSelection: string | null = selectedId) => {
 			try {
@@ -83,23 +88,8 @@ export function AdminChatPage() {
 		[selectedId, notify],
 	);
 
-	const loadMessages = useCallback(
-		async (conversationId: string) => {
-			try {
-				const result = await adminApi.getChatMessages(conversationId, 1, 100);
-				const items = [...result.messages.items].reverse();
-				setMessages(items);
-			} catch {
-				setMessages([]);
-				notify("Could not load this conversation");
-			}
-		},
-		[notify],
-	);
-
 	useEffect(() => {
 		let isActive = true;
-		setLoading(true);
 		adminApi
 			.listChatConversations(1, 50)
 			.then((result) => {
@@ -118,11 +108,29 @@ export function AdminChatPage() {
 		};
 	}, [notify]);
 
+	// Fetching on selection is what an effect is for. The state updates live in the response
+	// callbacks, and the cleanup drops a response that arrives after the selection moved on,
+	// so a fast switch between conversations cannot show the previous one's messages.
 	useEffect(() => {
 		if (!selectedId) return;
-		loadMessages(selectedId);
-		adminApi.markChatRead(selectedId).catch(() => undefined);
-	}, [selectedId, loadMessages]);
+		const conversationId = selectedId;
+		let isActive = true;
+		adminApi
+			.getChatMessages(conversationId, 1, 100)
+			.then((result) => {
+				if (!isActive) return;
+				setMessages([...result.messages.items].reverse());
+			})
+			.catch(() => {
+				if (!isActive) return;
+				setMessages([]);
+				notify("Could not load this conversation");
+			});
+		adminApi.markChatRead(conversationId).catch(() => undefined);
+		return () => {
+			isActive = false;
+		};
+	}, [selectedId, notify]);
 
 	useEffect(() => {
 		if (!selectedId) return;
@@ -177,7 +185,7 @@ export function AdminChatPage() {
 		}
 		setSending(true);
 		const optimistic: AdminChatMessage = {
-			id: `local-${Date.now()}`,
+			id: `local-${(pendingId.current += 1)}`,
 			conversationId: selected.id,
 			senderId: null,
 			messageType: "text",

@@ -24,6 +24,9 @@ class PublicCartRepository:
     def get_by_user(self, user_id: uuid.UUID) -> Cart | None:
         return self._db.scalar(select(Cart).where(Cart.user_id == user_id))
 
+    def get_by_guest_token_hash(self, guest_token_hash: str) -> Cart | None:
+        return self._db.scalar(select(Cart).where(Cart.guest_token_hash == guest_token_hash))
+
     def create(self, user_id: uuid.UUID) -> Cart:
         cart = Cart(user_id=user_id)
         self._db.add(cart)

@@ -23,11 +23,43 @@ export class GraphQLError extends Error {
 }
 
 export type UnauthorizedHandler = () => void;
+/** Attempts a silent token refresh. Resolves true when the session is usable again. */
+export type SessionRefresher = () => Promise<boolean>;
 
 let unauthorizedHandler: UnauthorizedHandler | undefined;
+let sessionRefresher: SessionRefresher | undefined;
+let refreshInFlight: Promise<boolean> | null = null;
 
 export function setUnauthorizedHandler(handler: UnauthorizedHandler | undefined): void {
 	unauthorizedHandler = handler;
+}
+
+export function setSessionRefresher(refresher: SessionRefresher | undefined): void {
+	sessionRefresher = refresher;
+	refreshInFlight = null;
+}
+
+/**
+ * Try to recover an expired access token from the HttpOnly refresh_token cookie.
+ * Single-flight, so a burst of parallel 401s triggers exactly one POST /auth/refresh.
+ */
+async function refreshSession(): Promise<boolean> {
+	if (!sessionRefresher) return false;
+	refreshInFlight ??= sessionRefresher().finally(() => {
+		refreshInFlight = null;
+	});
+	try {
+		return await refreshInFlight;
+	} catch {
+		return false;
+	}
+}
+
+/** An auth failure is only fatal once a refresh has been attempted and also failed. */
+async function handleAuthFailure(): Promise<boolean> {
+	if (await refreshSession()) return true; // session recovered, the caller may retry
+	notifyUnauthorized();
+	return false;
 }
 
 function notifyUnauthorized(): void {
@@ -57,6 +89,8 @@ export async function apiClient<T>(
 	path: string,
 	init: RequestInit = {},
 	token?: string,
+	/** Internal: bounds the refresh-and-replay to a single extra attempt. */
+	retried = false,
 ): Promise<T> {
 	const baseUrl = environment.apiUrl.replace(/\/+$/, "");
 	if (!baseUrl) {
@@ -85,7 +119,11 @@ export async function apiClient<T>(
 		} catch {
 			// non-JSON error body
 		}
-		if (isAuthFailureResponse(response.status, path)) notifyUnauthorized();
+		if (isAuthFailureResponse(response.status, path)) {
+			const recovered = await handleAuthFailure();
+			if (recovered && !retried) return apiClient<T>(path, init, token, true);
+			if (!recovered) throw new ApiError(response.status, detail);
+		}
 		throw new ApiError(response.status, detail);
 	}
 
@@ -114,6 +152,8 @@ async function graphqlRequest<T>(
 	query: string,
 	variables: Record<string, unknown>,
 	token?: string,
+	/** Internal: bounds the refresh-and-replay to a single extra attempt. */
+	retried = false,
 ): Promise<T> {
 	const baseUrl = environment.apiUrl.replace(/\/+$/, "");
 	if (!baseUrl) {
@@ -131,7 +171,8 @@ async function graphqlRequest<T>(
 	});
 
 	if (!response.ok) {
-		if (isAuthFailureResponse(response.status, path)) notifyUnauthorized();
+		const recovered = isAuthFailureResponse(response.status, path) && (await handleAuthFailure());
+		if (recovered && !retried) return graphqlRequest<T>(path, query, variables, token, true);
 		throw new ApiError(response.status, `GraphQL request failed with status ${response.status}`);
 	}
 
@@ -140,7 +181,10 @@ async function graphqlRequest<T>(
 		errors?: Array<{ message: string }>;
 	};
 	if (body.errors?.length) {
-		if (body.errors.some((error) => isAuthFailureMessage(error.message))) notifyUnauthorized();
+		if (body.errors.some((error) => isAuthFailureMessage(error.message))) {
+			const recovered = await handleAuthFailure();
+			if (recovered && !retried) return graphqlRequest<T>(path, query, variables, token, true);
+		}
 		throw new GraphQLError(body.errors);
 	}
 	return body.data as T;

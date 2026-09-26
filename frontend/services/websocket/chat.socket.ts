@@ -1,5 +1,5 @@
 import { environment } from "../../config/environment";
-import type { ChatMessage } from "../../types/chat";
+import type { AdminChatMessage, ChatMessage } from "../../types/chat";
 
 type JsonObject = { [key: string]: JsonValue };
 type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
@@ -44,7 +44,7 @@ class ChatSocketClient {
 	private connectionReady = false;
 	private nextId = 1;
 	private subscriptions = new Map<string, { handler: SocketHandler; query: string; variables: Record<string, unknown> }>();
-	private pingTimer: ReturnType<typeof setInterval> | null = null;
+	private pingTimer: number | null = null;
 	private reconnectAttempts = 0;
 	private shouldReconnect = true;
 
@@ -179,6 +179,12 @@ type SubscriptionOptions = {
 	onNotFound?: () => void;
 };
 
+type AdminSubscriptionOptions = {
+	conversationId: string;
+	onMessage: (message: AdminChatMessage) => void;
+	onNotFound?: () => void;
+};
+
 function createSubscription(
 	socket: ChatSocketClient,
 	query: string,
@@ -232,17 +238,24 @@ export function subscribeToChat({ conversationId, onMessage, onNotFound }: Subsc
 
 /**
  * Subscribe to realtime chat messages for an admin conversation view.
+ *
+ * The admin `ChatMessage` GraphQL type declares `createdAt: DateTime!` (non-null)
+ * and has no `mine` field, so a frame whose `createdAt` is missing is malformed
+ * and is dropped rather than rendered with an undefined time.
  */
 export function subscribeToAdminChat({
 	conversationId,
 	onMessage,
-}: SubscriptionOptions): Cleanup {
+}: AdminSubscriptionOptions): Cleanup {
 	return createSubscription(
 		adminChatSocket,
 		ADMIN_SUBSCRIPTION_QUERY,
 		`admin-chat-${conversationId}`,
 		{ conversationId },
-		onMessage,
+		(message) => {
+			if (typeof message.createdAt !== "string") return;
+			onMessage({ ...message, createdAt: message.createdAt });
+		},
 	);
 }
 

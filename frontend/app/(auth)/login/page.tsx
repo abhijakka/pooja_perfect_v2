@@ -11,6 +11,7 @@ import { PublicHeader } from "../../../components/layout/PublicHeader/PublicHead
 import { PublicFooter } from "../../../components/layout/PublicFooter/PublicFooter";
 import { useCart } from "../../../hooks/useCart";
 import { useWishlist } from "../../../hooks/useWishlist";
+import { useGoogleAuth } from "../../../hooks/useGoogleAuth";
 import { products } from "../../(public)/storefront-data";
 import { authApi } from "../../../services/api/auth.api";
 import { useAppDispatch } from "../../../store/hooks";
@@ -31,6 +32,19 @@ export default function LoginPage() {
 	const notify = (message: string) => {
 		setToast(message);
 		window.setTimeout(() => setToast(""), 2500);
+	};
+	// Google sign-in ends in the same session as the password path above, so the
+	// post-auth sequence (tokens → me() → setUser) lives in one shared hook and
+	// only the copy and the role redirect are owned by this page.
+	const { isBusy: googleBusy, signInWithGoogle } = useGoogleAuth({ onError: notify });
+	const continueWithGoogle = async () => {
+		const me = await signInWithGoogle();
+		if (!me) return;
+		notify("Welcome back to PoojaPoint");
+		window.setTimeout(() => {
+			if (me.role_name === "admin") router.push("/admin");
+			else router.push("/");
+		}, 700);
 	};
 	const formik = useFormik({
 		initialValues: { identifier: "", password: "", remember: false },
@@ -83,7 +97,7 @@ export default function LoginPage() {
 				<div className={`login-field ${formik.touched.identifier && formik.errors.identifier ? "invalid" : ""}`}><label htmlFor="identifier">Email or mobile number</label><div className="login-input-wrapper"><Icon name="user" /><input id="identifier" {...formik.getFieldProps("identifier")} placeholder="Email or 10-digit mobile" autoComplete="username" maxLength={254} autoFocus /></div><small>{formik.touched.identifier && formik.errors.identifier ? formik.errors.identifier : "Enter your email or mobile number."}</small></div>
 				<div className={`login-field ${formik.touched.password && formik.errors.password ? "invalid" : ""}`}><label htmlFor="password">Password</label><div className="login-input-wrapper"><Icon name="lock" /><input id="password" type={showPassword ? "text" : "password"} {...formik.getFieldProps("password")} placeholder="Enter your password" autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}><Icon name={showPassword ? "eye-off" : "eye"} /></button></div><small>{formik.touched.password && formik.errors.password ? formik.errors.password : "Enter your password."}</small></div>
 				<div className="login-options"><label><input type="checkbox" name="remember" checked={formik.values.remember} onChange={formik.handleChange} /> Remember me</label><Link href="/forgot-password">Forgot password?</Link></div>
-				<button className="login-submit" type="submit" disabled={loading}>{loading ? <span className="login-spinner" /> : <>Sign In <Icon name="arrow-right" /></>}</button><div className="login-divider"><span>OR</span></div><button className="login-google" type="button" onClick={() => notify("Google sign in is ready to connect")}><strong>G</strong> Continue with Google</button><p className="login-signup">Don&apos;t have an account? <Link href="/signup">Create account</Link></p><div className="login-security"><Icon name="shield" /> Secure login · Your information is protected.</div>
+				<button className="login-submit" type="submit" disabled={loading || googleBusy}>{loading ? <span className="login-spinner" /> : <>Sign In <Icon name="arrow-right" /></>}</button><div className="login-divider"><span>OR</span></div><button className="login-google" type="button" onClick={continueWithGoogle} disabled={loading || googleBusy} aria-busy={googleBusy}><strong>G</strong> Continue with Google</button><p className="login-signup">Don&apos;t have an account? <Link href="/signup">Create account</Link></p><div className="login-security"><Icon name="shield" /> Secure login · Your information is protected.</div>
 			</form></div>
 		</section></main>
 		<PublicFooter activeNav={nav} wishlistCount={wishlistCount} cartCount={cartCount} onNavChange={setNav} onWishlist={() => router.push("/wishlist")} onProfile={() => notify("Already on the sign-in page")} />

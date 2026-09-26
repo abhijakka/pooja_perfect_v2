@@ -9,7 +9,7 @@ import { useWishlist } from "../../../hooks/useWishlist";
 import { Icon } from "../../../components/Icon";
 import { PublicHeader } from "../../../components/layout/PublicHeader/PublicHeader";
 import { PublicFooter } from "../../../components/layout/PublicFooter/PublicFooter";
-import { products, type Product } from "../storefront-data";
+import { products, toStorefrontProduct, type Product } from "../storefront-data";
 import { productsApi } from "../../../services/api/products.api";
 import { tilt, resetTilt } from "../../../components/product/ProductCard/ProductGrid";
 
@@ -68,17 +68,7 @@ export default function ProductsPage() {
     let active = true;
     productsApi.list({ page: 1, pageSize: 100 }).then(({ products: result }) => {
       if (!active) return;
-      setCatalog(result.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        category: "pooja",
-        categoryLabel: "Pooja Essentials",
-        price: Number(item.discountPrice ?? item.price),
-        oldPrice: Number(item.originalPrice ?? item.price),
-        rating: Number(item.averageRating).toFixed(1),
-        slug: item.slug,
-        image: item.images.find((image) => image.isPrimary)?.url ?? item.images[0]?.url ?? "",
-      })));
+      setCatalog(result.items.map((item) => toStorefrontProduct(item)));
       setRequestState("success");
     }).catch(() => {
       if (!active) return;

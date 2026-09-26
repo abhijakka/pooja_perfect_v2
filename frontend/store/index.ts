@@ -21,14 +21,13 @@ export const makeStore = () => {
 	});
 
 	if (typeof window !== "undefined") {
+		// The wishlist is a local convenience list. The cart deliberately has no local
+		// mirror: the backend cart (guest_token cookie or customer id) is the only cart,
+		// so a second client-side copy can never disagree with it.
 		store.subscribe(() => {
 			try {
 				const { items } = store.getState().wishlist;
 				window.localStorage.setItem("poojapoint-wishlist", JSON.stringify(items));
-			} catch {}
-			try {
-				const { items } = store.getState().cart;
-				window.localStorage.setItem("poojapoint-cart", JSON.stringify(items));
 			} catch {}
 		});
 	}

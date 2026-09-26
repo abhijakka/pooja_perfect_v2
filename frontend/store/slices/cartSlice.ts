@@ -1,5 +1,6 @@
 import { createSlice, createSelector, type PayloadAction } from "@reduxjs/toolkit";
 import type { CartItem, CartProduct } from "../../types/cart";
+import { logout } from "./authSlice";
 import type { RootState } from "../index";
 
 type CartState = { items: CartItem[] };
@@ -38,6 +39,12 @@ const cartSlice = createSlice({
 		clearCart: (state) => {
 			state.items = [];
 		},
+	},
+	extraReducers: (builder) => {
+		// Never keep the previous customer's rows on screen after the session ends.
+		builder.addCase(logout, (state) => {
+			state.items = [];
+		});
 	},
 });
 

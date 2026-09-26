@@ -45,20 +45,13 @@ def mutate_start_conversation(
     ctx: PublicContext = info.context
     user = require_user_or_guest(ctx)
     svc = ChatService(ctx.db)
-    original_user = user
+    # set_guest_identity always returns the caller's own row, so conversation
+    # ownership is never transferred to an account the caller merely typed an
+    # email for. Authenticated callers keep their session identity and have
+    # name/email arguments ignored.
     if user.is_guest and (name or email):
         user = svc.set_guest_identity(user, name or "", email or "")
-        # If set_guest_identity returned a different user (email already existed),
-        # force creation of a NEW conversation so we don't load old chat history.
-        if user.id != original_user.id:
-            force_new = True
     conversation = svc.start_support(user, force_new=force_new)
-    # If identity changed (guest provided email for existing user), add the original
-    # guest as a participant so they can access the new conversation.
-    if user.id != original_user.id:
-        if not svc._repo.is_participant(conversation.id, original_user.id):
-            svc._repo.add_participant(conversation.id, original_user.id, "customer")
-            ctx.db.commit()
     return _to_conversation_type(conversation)
 
 

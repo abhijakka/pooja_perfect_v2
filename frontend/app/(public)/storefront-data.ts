@@ -1,7 +1,9 @@
+import type { CatalogProduct } from "../../services/api/products.api";
+
 export type Product = {
   id: string;
   name: string;
-  category: "pooja" | "idols" | "decor" | "gifting";
+  category: string;
   categoryLabel: string;
   price: number;
   oldPrice: number;
@@ -63,3 +65,24 @@ export const categories = [
   ["temple", "Temple Decor", "35+ products"],
   ["heart", "Gifting", "50+ products"],
 ] as const;
+
+/**
+ * Single mapping from a backend catalog product to the storefront product shape every
+ * card, cart row and detail page renders. Backend values win; nothing is hardcoded except
+ * the category fallback used when the backend exposes no matching category.
+ */
+export function toStorefrontProduct(item: CatalogProduct, category?: { slug: string; label: string }): Product {
+	const price = Number(item.discountPrice ?? item.price);
+	const listPrice = Number(item.originalPrice ?? item.price);
+	return {
+		id: item.id,
+		name: item.name,
+		category: category?.slug ?? "pooja",
+		categoryLabel: category?.label ?? "Pooja Essentials",
+		price: Number.isFinite(price) ? price : 0,
+		oldPrice: Number.isFinite(listPrice) ? listPrice : 0,
+		rating: Number(item.averageRating ?? 0).toFixed(1),
+		slug: item.slug,
+		image: item.images?.find((image) => image.isPrimary)?.url ?? item.images?.[0]?.url ?? "",
+	};
+}

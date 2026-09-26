@@ -32,15 +32,21 @@ class AdminWishlistRepository:
             select(
                 Product.id.label("product_id"),
                 Product.name.label("product_name"),
+                Product.price.label("price"),
                 func.count(WishlistItem.id).label("count"),
             )
             .join(WishlistItem, WishlistItem.product_id == Product.id)
-            .group_by(Product.id, Product.name)
+            .group_by(Product.id, Product.name, Product.price)
             .order_by(func.count(WishlistItem.id).desc())
             .limit(limit)
         ).all()
         return [
-            {"product_id": r.product_id, "product_name": r.product_name, "count": r.count}
+            {
+                "product_id": r.product_id,
+                "product_name": r.product_name,
+                "price": r.price,
+                "count": r.count,
+            }
             for r in rows
         ]
 

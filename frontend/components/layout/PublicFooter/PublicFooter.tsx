@@ -19,10 +19,10 @@ export function PublicFooter({ activeNav, wishlistCount, cartCount, onNavChange,
 					<p>A calm, modern destination for pooja essentials, sacred décor, gifting and everyday rituals.</p>
 					<p>Inspired by the best parts of modern Indian devotional shopping.</p>
 				</div>
-				<div>
-					<h3>Shop</h3>
-					  <Link href="/products">Pooja Products</Link><a href="#products">Idols</a><a href="#products">Decor</a><a href="#products">Gifting</a>
-				</div>
+					<div>
+						<h3>Shop</h3>
+						<Link href="/products">Pooja Products</Link><Link href="/products?category=idols">Idols</Link><Link href="/products?category=decor">Decor</Link><Link href="/products?category=gifting">Gifting</Link>
+					</div>
 				<div>
 					<h3>Help</h3>
 					<a href="#support">Contact us</a><a href="#support">Shipping</a><a href="#support">Returns</a><a href="#support">FAQ</a>

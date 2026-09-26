@@ -1,4 +1,5 @@
 import cartReducer, { addItem, removeItem, updateQuantity, clearCart, selectCartCount, selectCartTotal } from "./cartSlice";
+import { logout } from "./authSlice";
 
 const product = {
   id: "1",
@@ -61,5 +62,11 @@ describe("cartSlice", () => {
     const root = { cart: state } as never;
     expect(selectCartCount(root)).toBe(3);
     expect(selectCartTotal(root)).toBe(300);
+  });
+
+  it("drops the cart when the session ends so another visitor never sees it", () => {
+    let state = cartReducer(undefined, addItem({ product }));
+    state = cartReducer(state, logout());
+    expect(state.items).toHaveLength(0);
   });
 });

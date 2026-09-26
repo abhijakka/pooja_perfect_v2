@@ -22,6 +22,13 @@ def _to_token_type(t) -> TokenType:
     )
 
 
+def _bound_service(ctx: PublicContext) -> AuthService:
+    """AuthService that will adopt this browser's guest cart on the next sign-in."""
+    svc = AuthService(ctx.db)
+    svc.bind_guest_cart(ctx.guest_token)
+    return svc
+
+
 def mutate_signup(
     self,
     info: Info,
@@ -33,7 +40,7 @@ def mutate_signup(
     phone: str | None = None,
 ) -> TokenType:
     ctx: PublicContext = info.context
-    svc = AuthService(ctx.db)
+    svc = _bound_service(ctx)
     data = SignupInput(
         first_name=first_name,
         last_name=last_name,
@@ -51,7 +58,7 @@ def mutate_login(
     self, info: Info, identifier: str, password: str, remember: bool = False
 ) -> TokenType:
     ctx: PublicContext = info.context
-    svc = AuthService(ctx.db)
+    svc = _bound_service(ctx)
     tokens = svc.login(LoginInput(identifier=identifier, password=password, remember=remember))
     return _to_token_type(tokens)
 
@@ -72,6 +79,6 @@ def mutate_logout(self, info: Info, refresh_token: str) -> bool:
 
 def mutate_google_login(self, info: Info, provider: str, id_token: str) -> TokenType:
     ctx: PublicContext = info.context
-    svc = AuthService(ctx.db)
+    svc = _bound_service(ctx)
     tokens = svc.google_login(OAuthLoginInput(provider=provider, id_token=id_token))
     return _to_token_type(tokens)

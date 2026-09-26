@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import Link from "next/link";
 import type { StoreProduct } from "../../product/ProductCard/ProductGrid";
 import { Icon } from "../../Icon";
 
@@ -29,7 +30,7 @@ export function SearchBar({ query, suggestions, onQueryChange, onSearch }: Searc
 						<span>{suggestions.length} results</span>
 					</div>
 					{suggestions.map((product) => (
-						<a className="search-suggestion" href={`/products/${product.slug}`} key={product.id}>
+						<Link className="search-suggestion" href={`/products/${product.slug}`} key={product.id}>
 							<span className="search-suggestion-image">
 								<img src={product.image} alt={product.name} />
 							</span>
@@ -42,7 +43,7 @@ export function SearchBar({ query, suggestions, onQueryChange, onSearch }: Searc
 								</span>
 							</span>
 							<span className="search-view-button">View</span>
-						</a>
+						</Link>
 					))}
 				</div>
 			)}

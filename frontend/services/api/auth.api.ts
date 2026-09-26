@@ -22,4 +22,8 @@ export const authApi = {
 		apiClient<UserResponse>("/auth/me", { method: "GET", credentials: "include" }),
 	googleLogin: (data: OAuthLoginInput) =>
 		apiClient<TokenResponse>("/auth/google", { method: "POST", credentials: "include", body: JSON.stringify(data) }),
+	// Public client id only, read from the backend so it cannot drift from the
+	// audience the backend verifies the Google id_token against. The client
+	// secret is never exposed by this endpoint.
+	googleConfig: () => apiClient<{ client_id: string }>("/auth/google/config", { method: "GET" }),
 };

@@ -41,7 +41,7 @@ export default function OrdersPage() {
 		accountApi.getOverview().then(({ orders }) => setOrderData(orders.items.map((order: AccountOrder) => {
 			const status = order.status.toLowerCase();
 			const normalized: OrderStatus = status.includes("cancel") ? "cancelled" : status.includes("deliver") ? "delivered" : status.includes("ship") || status.includes("transit") ? "transit" : "processing";
-			return { id: order.order_number, date: new Date(order.created_at).toLocaleDateString("en-IN"), total: Number(order.total), status: normalized, statusLabel: order.status, deliveryTitle: order.status, deliveryText: order.status, message: order.status, items: order.items.map((item) => ({ id: item.product_id, name: item.product_name, quantity: item.quantity, price: Number(item.unit_price), category: "Pooja Essentials" })) };
+			return { id: order.orderNumber, date: new Date(order.createdAt).toLocaleDateString("en-IN"), total: Number(order.total), status: normalized, statusLabel: order.status, deliveryTitle: order.status, deliveryText: order.status, message: order.status, items: order.items.map((item) => ({ id: item.productId, name: item.productName, quantity: item.quantity, price: Number(item.unitPrice), category: "Pooja Essentials" })) };
 		}))).catch(() => setToast("Orders could not be loaded"));
 	}, []);
 	const suggestions = useMemo(() => query ? products.filter((item) => `${item.name} ${item.categoryLabel}`.toLowerCase().includes(query.toLowerCase())).slice(0, 6) : [], [query]);
